@@ -29,6 +29,8 @@ interface ConnectionStatus {
   mh5Tk?: string
   websocketToken?: string
   tokenExpireTime?: number
+  autoDeliveryOn?: boolean
+  autoReplyOn?: boolean
 }
 
 interface Props {
@@ -256,7 +258,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="status-card__content">
               <span class="status-card__title">Cookie 状态</span>
-              <span class="status-card__desc">{{ canSyncGoods ? '可正常同步商品信息' : 'Cookie无效，无法同步商品信息' }}</span>
+              <span class="status-card__desc">{{ canSyncGoods ? '有效' : '无效' }}</span>
             </div>
             <button class="btn btn--ghost btn--small" @click="showCredentialDialog = true">
               <IconKey /><span>凭证详情</span>
@@ -269,22 +271,42 @@ onBeforeUnmount(() => {
             </div>
             <div class="status-card__content">
               <span class="status-card__title">Websocket 状态</span>
-              <span class="status-card__desc">{{ canAutoReply ? '可正常自动发货与回复' : '未连接，无法自动发货与回复' }}</span>
+              <span class="status-card__desc">{{ canAutoReply ? '已连接' : '未连接' }}</span>
             </div>
             <button
               v-if="connectionStatus.connected === true"
               class="btn btn--stop btn--small"
               @click="handleStopConnection"
             >
-              <IconStop /><span>断开连接</span>
+              <IconStop /><span>断开</span>
             </button>
             <button
               v-else
               class="btn btn--start btn--small"
               @click="handleStartConnection"
             >
-              <IconPlay /><span>开始连接</span>
+              <IconPlay /><span>连接</span>
             </button>
+          </div>
+
+          <div class="status-card" :class="connectionStatus.autoDeliveryOn ? 'status-card--success' : 'status-card--danger'">
+            <div class="status-card__icon">
+              <component :is="connectionStatus.autoDeliveryOn ? IconCheck : IconAlert" />
+            </div>
+            <div class="status-card__content">
+              <span class="status-card__title">自动发货</span>
+              <span class="status-card__desc">{{ connectionStatus.autoDeliveryOn ? (connectionStatus.connected ? 'WS 发货' : '凭证发货') : '未开启' }}</span>
+            </div>
+          </div>
+
+          <div class="status-card" :class="connectionStatus.autoReplyOn ? 'status-card--success' : 'status-card--danger'">
+            <div class="status-card__icon">
+              <component :is="connectionStatus.autoReplyOn ? IconCheck : IconAlert" />
+            </div>
+            <div class="status-card__content">
+              <span class="status-card__title">自动回复</span>
+              <span class="status-card__desc">{{ connectionStatus.autoReplyOn ? '已开启' : '未开启' }}</span>
+            </div>
           </div>
         </div>
 
@@ -417,8 +439,8 @@ onBeforeUnmount(() => {
 }
 
 .status-cards {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
   width: 100%;
 }

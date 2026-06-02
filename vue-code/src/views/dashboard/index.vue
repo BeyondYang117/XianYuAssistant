@@ -302,7 +302,7 @@ const formatDateStr = (date: Date): string => {
   return `${y}-${m}-${d}`
 }
 
-const salesEndDate = ref(formatDateStr(new Date(new Date().getTime() - 86400000)))
+const salesEndDate = ref(formatDateStr(new Date()))
 const salesStartDate = ref(formatDateStr(new Date(new Date().getTime() - 14 * 86400000)))
 
 type SalesQuickRange = '15d' | '1m' | '8w' | '6m_w' | '6m' | '1y'
@@ -329,7 +329,7 @@ const getQuickRangeDays = (range: SalesQuickRange): number => {
 
 const setSalesQuickRange = (range: SalesQuickRange) => {
   salesQuickRange.value = range
-  const end = new Date(new Date().getTime() - 86400000)
+  const end = new Date()
   const start = new Date(end.getTime() - getQuickRangeDays(range) * 86400000)
   salesStartDate.value = formatDateStr(start)
   salesEndDate.value = formatDateStr(end)
@@ -345,7 +345,7 @@ const switchSalesDimension = (dim: 'day' | 'week' | 'month') => {
   salesDimension.value = dim
   const defaultRange = salesQuickOptions.value[0]?.key ?? '15d'
   salesQuickRange.value = defaultRange
-  const end = new Date(new Date().getTime() - 86400000)
+  const end = new Date()
   const start = new Date(end.getTime() - getQuickRangeDays(defaultRange) * 86400000)
   salesStartDate.value = formatDateStr(start)
   salesEndDate.value = formatDateStr(end)

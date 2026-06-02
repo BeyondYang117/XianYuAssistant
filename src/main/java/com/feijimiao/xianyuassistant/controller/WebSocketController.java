@@ -385,6 +385,22 @@ public class WebSocketController {
                         reqDTO.getXianyuAccountId(), connected ? "✅" : "❌");
             }
 
+            com.feijimiao.xianyuassistant.mapper.XianyuGoodsConfigMapper goodsConfigMapper =
+                    applicationContext.getBean(com.feijimiao.xianyuassistant.mapper.XianyuGoodsConfigMapper.class);
+            try {
+                java.util.List<com.feijimiao.xianyuassistant.entity.XianyuGoodsConfig> configs =
+                        goodsConfigMapper.selectByAccountId(reqDTO.getXianyuAccountId());
+                boolean hasAutoDelivery = configs != null && configs.stream()
+                        .anyMatch(c -> c.getXianyuAutoDeliveryOn() != null && c.getXianyuAutoDeliveryOn() == 1);
+                boolean hasAutoReply = configs != null && configs.stream()
+                        .anyMatch(c -> c.getXianyuAutoReplyOn() != null && c.getXianyuAutoReplyOn() == 1);
+                respDTO.setAutoDeliveryOn(hasAutoDelivery);
+                respDTO.setAutoReplyOn(hasAutoReply);
+            } catch (Exception e) {
+                respDTO.setAutoDeliveryOn(null);
+                respDTO.setAutoReplyOn(null);
+            }
+
             return ResultObject.success(respDTO);
 
         } catch (Exception e) {
@@ -793,6 +809,8 @@ public class WebSocketController {
         private String mH5Tk;          // H5 Token (_m_h5_tk)
         private String websocketToken; // WebSocket Token
         private Long tokenExpireTime;  // Token过期时间戳（毫秒）
+        private Boolean autoDeliveryOn; // 是否有商品开启了自动发货
+        private Boolean autoReplyOn;     // 是否有商品开启了自动回复
     }
     
     /**

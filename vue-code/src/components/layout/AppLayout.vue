@@ -66,6 +66,7 @@ const pageTitleMap: Record<string, string> = {
   '/orders': '发货记录',
   '/messages': '消息管理',
   '/auto-delivery': '自动发货',
+
   '/auto-reply': '自动回复',
   '/operation-log': '操作日志',
   '/settings': '系统设置'
@@ -79,6 +80,7 @@ const pageIconMap: Record<string, any> = {
   '/orders': markRaw(IconTruck),
   '/messages': markRaw(IconMessage),
   '/auto-delivery': markRaw(IconRobot),
+
   '/auto-reply': markRaw(IconChat),
   '/operation-log': markRaw(IconLog),
   '/settings': markRaw(IconShield)

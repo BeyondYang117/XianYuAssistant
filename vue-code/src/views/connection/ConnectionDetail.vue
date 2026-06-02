@@ -35,6 +35,8 @@ interface ConnectionStatus {
   mh5Tk?: string
   websocketToken?: string
   tokenExpireTime?: number
+  autoDeliveryOn?: boolean
+  autoReplyOn?: boolean
 }
 
 const route = useRoute()
@@ -47,7 +49,7 @@ const loadAccountName = async () => {
   try {
     const res = await getAccountList()
     if (res.code === 200 && res.data) {
-      const acc = res.data.find((a: any) => a.id === accountId.value)
+      const acc = (res.data.accounts || res.data || []).find((a: any) => a.id === accountId.value)
       accountName.value = acc?.accountNote || acc?.unb || ''
     }
   } catch (e) {
@@ -297,32 +299,46 @@ onBeforeUnmount(() => {
             <div class="cap-card__dot"></div>
             <div class="cap-card__text">
               <span class="cap-card__label">Cookie 状态</span>
-              <span class="cap-card__desc">{{ canSyncGoods ? '可正常同步商品信息' : 'Cookie无效，无法同步' }}</span>
+              <span class="cap-card__desc">{{ canSyncGoods ? '有效' : '无效' }}</span>
             </div>
             <button class="act-btn act-btn--outline act-btn--card" @click="showCredentialSection = !showCredentialSection">
-              <IconKey /><span>{{ showCredentialSection ? '收起凭证' : '凭证详情' }}</span>
+              <IconKey /><span>{{ showCredentialSection ? '收起' : '凭证' }}</span>
             </button>
           </div>
           <div class="cap-card" :class="canAutoReply ? 'cap-card--ok' : 'cap-card--err'">
             <div class="cap-card__dot"></div>
             <div class="cap-card__text">
               <span class="cap-card__label">Websocket 状态</span>
-              <span class="cap-card__desc">{{ canAutoReply ? '可正常自动发货与回复' : '未连接，无法工作' }}</span>
+              <span class="cap-card__desc">{{ canAutoReply ? '已连接' : '未连接' }}</span>
             </div>
             <button
               v-if="connectionStatus.connected === true"
               class="act-btn act-btn--danger act-btn--card"
               @click="handleStopConnection"
             >
-              <IconStop /><span>断开连接</span>
+              <IconStop /><span>断开</span>
             </button>
             <button
               v-else
               class="act-btn act-btn--success act-btn--card"
               @click="handleStartConnection"
             >
-              <IconPlay /><span>开始连接</span>
+              <IconPlay /><span>连接</span>
             </button>
+          </div>
+          <div class="cap-card" :class="connectionStatus.autoDeliveryOn ? 'cap-card--ok' : 'cap-card--err'">
+            <div class="cap-card__dot"></div>
+            <div class="cap-card__text">
+              <span class="cap-card__label">自动发货</span>
+              <span class="cap-card__desc">{{ connectionStatus.autoDeliveryOn ? (connectionStatus.connected ? 'WS 发货' : '凭证发货') : '未开启' }}</span>
+            </div>
+          </div>
+          <div class="cap-card" :class="connectionStatus.autoReplyOn ? 'cap-card--ok' : 'cap-card--err'">
+            <div class="cap-card__dot"></div>
+            <div class="cap-card__text">
+              <span class="cap-card__label">自动回复</span>
+              <span class="cap-card__desc">{{ connectionStatus.autoReplyOn ? '已开启' : '未开启' }}</span>
+            </div>
           </div>
         </div>
 
@@ -545,8 +561,8 @@ onBeforeUnmount(() => {
 
 /* Capability Cards */
 .cap-section {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
 

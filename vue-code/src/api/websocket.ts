@@ -10,6 +10,8 @@ export interface WebSocketStatus {
   cookieText?: string;        // Cookie值
   websocketToken?: string;    // WebSocket Token
   tokenExpireTime?: number;   // Token过期时间戳（毫秒）
+  autoDeliveryOn?: boolean;   // 是否有商品开启了自动发货
+  autoReplyOn?: boolean;      // 是否有商品开启了自动回复
 }
 
 // 获取连接状态

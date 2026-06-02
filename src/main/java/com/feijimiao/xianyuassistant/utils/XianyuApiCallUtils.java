@@ -46,19 +46,42 @@ public class XianyuApiCallUtils {
      */
     public ApiCallResult callApiWithRetry(Long accountId, String apiName, 
                                           Map<String, Object> dataMap, String cookiesStr) {
-        return callApiWithRetry(accountId, apiName, dataMap, cookiesStr, 0);
+        return callApiWithRetry(accountId, apiName, dataMap, cookiesStr, null, null, 0);
+    }
+
+    public ApiCallResult callApiWithRetry(Long accountId, String apiName,
+                                          Map<String, Object> dataMap, String cookiesStr,
+                                          Map<String, String> extraHeaders) {
+        return callApiWithRetry(accountId, apiName, dataMap, cookiesStr, extraHeaders, null, 0);
+    }
+
+    public ApiCallResult callApiWithRetry(Long accountId, String apiName,
+                                          Map<String, Object> dataMap, String cookiesStr,
+                                          Map<String, String> extraHeaders,
+                                          Map<String, String> extraQueryParams) {
+        return callApiWithRetry(accountId, apiName, dataMap, cookiesStr, extraHeaders, extraQueryParams, 0);
     }
     
-    /**
-     * 调用闲鱼API（带自动刷新机制，内部方法）
-     * 【关键修复】参考Python：所有API调用都需要处理Set-Cookie
-     */
     private ApiCallResult callApiWithRetry(Long accountId, String apiName,
                                            Map<String, Object> dataMap, String cookiesStr,
                                            int retryCount) {
+        return callApiWithRetry(accountId, apiName, dataMap, cookiesStr, null, null, retryCount);
+    }
+
+    private ApiCallResult callApiWithRetry(Long accountId, String apiName,
+                                           Map<String, Object> dataMap, String cookiesStr,
+                                           Map<String, String> extraHeaders,
+                                           int retryCount) {
+        return callApiWithRetry(accountId, apiName, dataMap, cookiesStr, extraHeaders, null, retryCount);
+    }
+
+    private ApiCallResult callApiWithRetry(Long accountId, String apiName,
+                                           Map<String, Object> dataMap, String cookiesStr,
+                                           Map<String, String> extraHeaders,
+                                           Map<String, String> extraQueryParams,
+                                           int retryCount) {
         try {
-            // 1. 调用API（带响应头）
-            XianyuApiUtils.ApiCallResultWithHeaders result = XianyuApiUtils.callApiWithHeaders(apiName, dataMap, cookiesStr, null, null);
+            XianyuApiUtils.ApiCallResultWithHeaders result = XianyuApiUtils.callApiWithHeaders(apiName, dataMap, cookiesStr, null, null, extraHeaders, extraQueryParams);
 
             String response = result.getBody();
             if (response == null || response.isEmpty()) {

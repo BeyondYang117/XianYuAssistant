@@ -186,7 +186,8 @@ const getStatusText = (status: number) => {
   const statusMap: Record<number, string> = {
     0: '在售',
     1: '已下架',
-    2: '已售出'
+    2: '已售出',
+    '-1': '已删除'
   };
   return statusMap[status] || '未知';
 };

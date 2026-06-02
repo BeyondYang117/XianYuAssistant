@@ -1,5 +1,6 @@
 package com.feijimiao.xianyuassistant.controller;
 
+import com.feijimiao.xianyuassistant.cache.CacheService;
 import com.feijimiao.xianyuassistant.common.ResultObject;
 import com.feijimiao.xianyuassistant.controller.dto.DataPanelStatsRespDTO;
 import com.feijimiao.xianyuassistant.controller.dto.DataPanelTrendRespDTO;
@@ -15,6 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.IsoFields;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @RestController
@@ -28,6 +30,11 @@ public class DataPanelController {
     @Autowired
     private XianyuGoodsAutoReplyRecordMapper replyRecordMapper;
 
+    @Autowired
+    private CacheService cacheService;
+
+    private static final long CACHE_TTL_MINUTES = 30;
+
     @PostMapping("/stats")
     public ResultObject<DataPanelStatsRespDTO> getDataPanelStats(@RequestBody(required = false) StatsReq req) {
         try {
@@ -38,12 +45,26 @@ public class DataPanelController {
                 date = LocalDate.now().minusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE);
             }
 
+            boolean isToday = date.equals(LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE));
+            String cacheKey = "dataPanelStats:" + date;
+
+            if (!isToday) {
+                DataPanelStatsRespDTO cached = cacheService.get(cacheKey, DataPanelStatsRespDTO.class);
+                if (cached != null) {
+                    return ResultObject.success(cached);
+                }
+            }
+
             DataPanelStatsRespDTO respDTO = new DataPanelStatsRespDTO();
             respDTO.setOrderCount(orderMapper.countOrdersByDate(date));
             respDTO.setDeliverySuccessCount(orderMapper.countDeliverySuccessByDate(date));
             respDTO.setDeliveryFailCount(orderMapper.countDeliveryFailByDate(date));
             respDTO.setAiReplyCount(replyRecordMapper.countAiRepliesByDate(date));
             respDTO.setHasData(orderMapper.countAllOrders() > 0 || replyRecordMapper.countAllReplies() > 0);
+
+            if (!isToday) {
+                cacheService.put(cacheKey, respDTO, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
+            }
 
             return ResultObject.success(respDTO);
         } catch (Exception e) {
@@ -55,6 +76,12 @@ public class DataPanelController {
     @PostMapping("/trend")
     public ResultObject<DataPanelTrendRespDTO> getDataPanelTrend() {
         try {
+            String cacheKey = "dataPanelTrend:" + LocalDate.now();
+            DataPanelTrendRespDTO cached = cacheService.get(cacheKey, DataPanelTrendRespDTO.class);
+            if (cached != null) {
+                return ResultObject.success(cached);
+            }
+
             DataPanelTrendRespDTO respDTO = new DataPanelTrendRespDTO();
             List<String> dates = new ArrayList<>();
             List<Integer> deliverySuccess = new ArrayList<>();
@@ -77,6 +104,8 @@ public class DataPanelController {
             respDTO.setDeliverySuccess(deliverySuccess);
             respDTO.setDeliveryFail(deliveryFail);
             respDTO.setAiReplies(aiReplies);
+
+            cacheService.put(cacheKey, respDTO, 10, TimeUnit.MINUTES);
 
             return ResultObject.success(respDTO);
         } catch (Exception e) {
@@ -115,13 +144,24 @@ public class DataPanelController {
             if (endDateStr != null && !endDateStr.isEmpty()) {
                 endDate = LocalDate.parse(endDateStr, fmt);
             } else {
-                endDate = LocalDate.now().minusDays(1);
+                endDate = LocalDate.now();
             }
 
             if (startDateStr != null && !startDateStr.isEmpty()) {
                 startDate = LocalDate.parse(startDateStr, fmt);
             } else {
                 startDate = endDate.minusDays(9);
+            }
+
+            boolean isToday = !endDate.isBefore(LocalDate.now());
+            String cacheKey = "salesRevenue:" + dimension + ":" + startDate + ":" + endDate;
+
+            if (!isToday) {
+                SalesRevenueRespDTO cached = cacheService.get(cacheKey, SalesRevenueRespDTO.class);
+                if (cached != null) {
+                    log.debug("销售额趋势命中缓存: {}", cacheKey);
+                    return ResultObject.success(cached);
+                }
             }
 
             SalesRevenueRespDTO respDTO = new SalesRevenueRespDTO();
@@ -145,6 +185,11 @@ public class DataPanelController {
 
             respDTO.setLabels(labels);
             respDTO.setValues(values);
+
+            if (!isToday) {
+                cacheService.put(cacheKey, respDTO, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
+            }
+
             return ResultObject.success(respDTO);
         } catch (Exception e) {
             log.error("获取销售额趋势失败", e);

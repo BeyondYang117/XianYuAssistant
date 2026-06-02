@@ -68,3 +68,27 @@ export function manualDelivery(data: { xianyuAccountId: number; orderId: string;
     data
   })
 }
+
+export function getPendingOrders(xianyuAccountId: number) {
+  return request<any[]>({
+    url: '/order/pendingOrders',
+    method: 'POST',
+    data: { xianyuAccountId }
+  })
+}
+
+export function deliverPendingOrders(xianyuAccountId: number) {
+  return request<number>({
+    url: '/order/deliverPendingOrders',
+    method: 'POST',
+    data: { xianyuAccountId }
+  })
+}
+
+export function consignDummyDelivery(data: { xianyuAccountId: number; xyGoodsId: string; orderId: string }) {
+  return request<string>({
+    url: '/order/consignDummyDelivery',
+    method: 'POST',
+    data
+  })
+}

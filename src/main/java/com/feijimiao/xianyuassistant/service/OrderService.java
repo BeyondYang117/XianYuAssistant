@@ -1,5 +1,8 @@
 package com.feijimiao.xianyuassistant.service;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * 订单服务接口
  */
@@ -23,6 +26,10 @@ public interface OrderService {
      */
     String confirmShipmentToXianyu(Long accountId, String orderId);
 
+    String consignDummyDelivery(Long accountId, String orderId, String tradeText, List<String> imageUrls);
+
+    String consignDummyDeliveryWithConfig(Long accountId, String xyGoodsId, String orderId);
+
     /**
      * 获取订单详情
      *
@@ -33,4 +40,8 @@ public interface OrderService {
     String getOrderDetail(Long accountId, String orderId);
 
     String getOrderDetailFromLocal(Long accountId, String orderId);
+
+    List<Map<String, Object>> queryPendingOrders(Long accountId);
+
+    Map<String, Object> getOrderDetailMap(Long accountId, String orderId);
 }

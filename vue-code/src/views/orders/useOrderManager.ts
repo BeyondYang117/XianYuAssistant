@@ -209,11 +209,6 @@ export function useOrderManager() {
       return
     }
     try {
-      await showConfirm(
-        `确认订单 ${row.orderId} 已发货吗？`,
-        '确认发货'
-      )
-
       row.confirming = true
       await confirmShipment({
         xianyuAccountId: (row as any).xianyuAccountId,
@@ -223,11 +218,7 @@ export function useOrderManager() {
       showSuccess('确认发货成功')
       loadOrders()
     } catch (error: any) {
-      if (error === 'cancel') return
-      // 只有在错误消息未显示过时才弹出提示（避免重复显示）
-      if (!error.messageShown) {
-        showError('确认发货失败: ' + (error.message || '未知错误'))
-      }
+      showError('确认发货失败: ' + (error.message || '未知错误'))
     } finally {
       row.confirming = false
     }

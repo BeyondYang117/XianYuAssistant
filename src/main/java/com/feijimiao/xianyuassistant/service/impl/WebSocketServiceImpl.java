@@ -4,6 +4,7 @@ import com.feijimiao.xianyuassistant.config.WebSocketConfig;
 import com.feijimiao.xianyuassistant.constants.OperationConstants;
 import com.feijimiao.xianyuassistant.service.AccountService;
 import com.feijimiao.xianyuassistant.service.OperationLogService;
+
 import com.feijimiao.xianyuassistant.service.WebSocketService;
 import com.feijimiao.xianyuassistant.service.WebSocketTokenService;
 import com.feijimiao.xianyuassistant.utils.XianyuSignUtils;
@@ -13,6 +14,7 @@ import com.feijimiao.xianyuassistant.websocket.XianyuWebSocketClient;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -62,6 +64,7 @@ public class WebSocketServiceImpl implements WebSocketService {
 
     @Autowired
     private com.feijimiao.xianyuassistant.mapper.XianyuAccountMapper xianyuAccountMapper;
+
 
     // 存储WebSocket客户端
     private final Map<Long, XianyuWebSocketClient> webSocketClients = new ConcurrentHashMap<>();
@@ -316,7 +319,7 @@ public class WebSocketServiceImpl implements WebSocketService {
             // 设置连接关闭回调（参考Python的finally块中重连逻辑）
             client.setOnConnectionClosed(() -> {
                 log.warn("【账号{}】WebSocket连接被关闭，触发自动重连...", accountId);
-                // 参考Python: 如果是主动重启，立即重连；否则等待5秒
+
                 Boolean restartFlag = connectionRestartFlags.get(accountId);
                 boolean isManualRestart = restartFlag != null && restartFlag;
                 

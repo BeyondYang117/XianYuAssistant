@@ -259,7 +259,7 @@ const executeConfirmShipment = async () => {
                     class="orders__goods-status"
                     :class="`orders__goods-status--${goods.item.status === 0 ? 'on-sale' : goods.item.status === 1 ? 'off-shelf' : 'sold'}`"
                   >
-                    {{ goods.item.status === 0 ? '在售' : goods.item.status === 1 ? '已下架' : '已售出' }}
+                    {{ goods.item.status === 0 ? '在售' : goods.item.status === 1 ? '已下架' : goods.item.status === -1 ? '已删除' : '已售出' }}
                   </span>
                 </div>
               </div>

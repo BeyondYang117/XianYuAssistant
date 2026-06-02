@@ -356,6 +356,7 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
             int deliveryMode = deliveryConfig.getDeliveryMode() != null ? deliveryConfig.getDeliveryMode() : 1;
             String cid = sId.replace("@goofish", "");
             String toId = cid;
+            boolean wsConnected = webSocketService.isConnected(accountId);
             boolean anySuccess = false;
             StringBuilder allContent = new StringBuilder();
 
@@ -368,6 +369,40 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
                     .buyerUserName(buyerUserName)
                     .deliveryConfig(deliveryConfig)
                     .build();
+
+            if (!wsConnected) {
+                log.info("【账号{}】WebSocket未连接，使用虚拟发货API: orderId={}", accountId, orderId);
+                String content = deliveryStrategyResolver.resolve(deliveryMode, ctx);
+                if (content == null) {
+                    String failMsg = deliveryMode == 1 ? "未配置发货内容" : (deliveryMode == 2 ? "卡密库存不足，无可用卡密" : "未知的发货模式: " + deliveryMode);
+                    log.warn("【账号{}】发货内容解析失败: {}", accountId, failMsg);
+                    updateRecordState(recordId, -1, null, failMsg);
+                    emailNotifyService.sendAutoDeliveryFailEmail(null, xyGoodsId, orderId, failMsg);
+                    return;
+                }
+
+                List<String> imageUrls = new ArrayList<>();
+                String imageUrlStr = deliveryConfig.getAutoDeliveryImageUrl();
+                if (imageUrlStr != null && !imageUrlStr.trim().isEmpty()) {
+                    for (String url : imageUrlStr.split(",")) {
+                        String trimmed = url.trim();
+                        if (!trimmed.isEmpty()) imageUrls.add(trimmed);
+                    }
+                }
+
+                String deliveryResult = orderService.consignDummyDelivery(accountId, orderId, content, imageUrls);
+                if (deliveryResult != null) {
+                    anySuccess = true;
+                    allContent.append(content);
+                    log.info("【账号{}】✅ 虚拟发货API成功: recordId={}, result={}", accountId, recordId, deliveryResult);
+                    sentMessageSaveService.saveAiAssistantReply(accountId, cid, toId, content, xyGoodsId);
+                } else {
+                    log.error("【账号{}】❌ 虚拟发货API失败: recordId={}", accountId, recordId);
+                    updateRecordState(recordId, -1, content, "虚拟发货API失败");
+                    emailNotifyService.sendAutoDeliveryFailEmail(null, xyGoodsId, orderId, "虚拟发货API失败");
+                    return;
+                }
+            } else {
 
             for (int i = 0; i < buyNum; i++) {
                 log.info("【账号{}】发货第{}/{}次: orderId={}", accountId, i + 1, buyNum, orderId);
@@ -416,6 +451,8 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
                     break;
                 }
             }
+
+            } // end else (wsConnected)
 
             if (anySuccess) {
                 updateRecordState(recordId, 1, allContent.toString(), null);

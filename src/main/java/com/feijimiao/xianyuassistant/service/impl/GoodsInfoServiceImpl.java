@@ -348,24 +348,24 @@ public class GoodsInfoServiceImpl implements GoodsInfoService {
         try {
             LambdaQueryWrapper<XianyuGoodsInfo> queryWrapper = new LambdaQueryWrapper<>();
             queryWrapper.eq(XianyuGoodsInfo::getXianyuAccountId, xianyuAccountId);
-            queryWrapper.eq(XianyuGoodsInfo::getStatus, 0);
-            List<XianyuGoodsInfo> localOnSaleItems = goodsInfoMapper.selectList(queryWrapper);
+            queryWrapper.in(XianyuGoodsInfo::getStatus, 0, 1);
+            List<XianyuGoodsInfo> localItems = goodsInfoMapper.selectList(queryWrapper);
 
             int markedCount = 0;
-            for (XianyuGoodsInfo localItem : localOnSaleItems) {
+            for (XianyuGoodsInfo localItem : localItems) {
                 if (!remoteItemIds.contains(localItem.getXyGoodId())) {
-                    localItem.setStatus(1);
+                    localItem.setStatus(-1);
                     localItem.setUpdatedTime(getCurrentTimeString());
                     goodsInfoMapper.updateById(localItem);
                     markedCount++;
-                    log.info("商品已下架(同步时标记): xyGoodId={}, title={}", localItem.getXyGoodId(), localItem.getTitle());
+                    log.info("商品已删除(远程不存在): xyGoodId={}, title={}", localItem.getXyGoodId(), localItem.getTitle());
                 }
             }
             if (markedCount > 0) {
-                log.info("【账号{}】同步时标记{}个商品为已下架", xianyuAccountId, markedCount);
+                log.info("【账号{}】同步时标记{}个商品为已删除(status=-1)", xianyuAccountId, markedCount);
             }
         } catch (Exception e) {
-            log.error("标记下架商品失败: accountId={}", xianyuAccountId, e);
+            log.error("标记删除商品失败: accountId={}", xianyuAccountId, e);
         }
     }
 }

@@ -14,6 +14,9 @@ public interface XianyuGoodsConfigMapper {
      */
     @Select("SELECT * FROM xianyu_goods_config WHERE xianyu_account_id = #{accountId} AND xy_goods_id = #{xyGoodsId}")
     XianyuGoodsConfig selectByAccountAndGoodsId(@Param("accountId") Long accountId, @Param("xyGoodsId") String xyGoodsId);
+
+    @Select("SELECT * FROM xianyu_goods_config WHERE xianyu_account_id = #{accountId}")
+    java.util.List<XianyuGoodsConfig> selectByAccountId(@Param("accountId") Long accountId);
     
     /**
      * 插入配置
