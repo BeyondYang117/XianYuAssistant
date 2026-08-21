@@ -44,6 +44,12 @@ public class AccountServiceImpl implements AccountService {
     private XianyuDeliveryLeaseMapper deliveryLeaseMapper;
 
     @Autowired
+    private com.feijimiao.xianyuassistant.mapper.XianyuAccountTaskSettingMapper accountTaskSettingMapper;
+
+    @Autowired
+    private com.feijimiao.xianyuassistant.mapper.XianyuAccountTaskRunMapper accountTaskRunMapper;
+
+    @Autowired
     private XianyuHumanInterventionRecordMapper humanInterventionRecordMapper;
 
     @Autowired
@@ -495,6 +501,8 @@ public class AccountServiceImpl implements AccountService {
             humanInterventionRecordMapper.deleteByAccountId(accountId);
             autoReplyDelayTaskMapper.deleteByAccountId(accountId);
             deliveryLeaseMapper.deleteByAccountId(accountId);
+            accountTaskSettingMapper.deleteByAccountId(accountId);
+            accountTaskRunMapper.deleteByAccountId(accountId);
             
             // 7. 删除操作记录数据
             int operationLogCount = operationLogMapper.deleteByAccountId(accountId);

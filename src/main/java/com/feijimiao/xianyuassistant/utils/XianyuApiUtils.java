@@ -33,6 +33,19 @@ public class XianyuApiUtils {
      * @return 请求头Map
      */
     public static Map<String, String> buildStandardHeaders(String cookiesStr) {
+        return buildStandardHeaders(cookiesStr, DEFAULT_REFERER);
+    }
+
+    /**
+     * 构建标准的闲鱼API请求头（指定Referer）
+     * 卖家侧接口需要 seller.goofish.com 来源，Origin 会同步跟随
+     *
+     * @param cookiesStr Cookie字符串
+     * @param referer 请求来源页
+     * @return 请求头Map
+     */
+    public static Map<String, String> buildStandardHeaders(String cookiesStr, String referer) {
+        String effectiveReferer = (referer == null || referer.isBlank()) ? DEFAULT_REFERER : referer.trim();
         Map<String, String> headers = new HashMap<>();
         headers.put("Cookie", cookiesStr);
         headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36");
@@ -40,8 +53,8 @@ public class XianyuApiUtils {
         headers.put("Accept-Language", "zh-CN,zh;q=0.9");
         headers.put("Cache-Control", "no-cache");
         headers.put("Pragma", "no-cache");
-        headers.put("Origin", "https://www.goofish.com");
-        headers.put("Referer", "https://www.goofish.com/");
+        headers.put("Origin", originOf(effectiveReferer));
+        headers.put("Referer", effectiveReferer);
         headers.put("Sec-Fetch-Dest", "empty");
         headers.put("Sec-Fetch-Mode", "cors");
         headers.put("Sec-Fetch-Site", "same-site");
@@ -50,9 +63,41 @@ public class XianyuApiUtils {
         headers.put("Sec-Ch-Ua-Platform", "\"Windows\"");
         return headers;
     }
+
+    /**
+     * 从Referer推导Origin（去掉路径部分）
+     */
+    private static String originOf(String referer) {
+        try {
+            java.net.URI uri = java.net.URI.create(referer);
+            if (uri.getScheme() != null && uri.getHost() != null) {
+                return uri.getScheme() + "://" + uri.getHost();
+            }
+        } catch (Exception e) {
+            log.warn("解析Referer失败，回落到默认Origin: referer={}", referer);
+        }
+        return "https://www.goofish.com";
+    }
     
     /**
-     * 构建标准的URL参数
+     * 默认API版本号
+     * 绝大多数闲鱼接口是1.0；擦亮是2.0、评价创建是4.0，需要显式传入
+     */
+    public static final String DEFAULT_API_VERSION = "1.0";
+
+    /**
+     * 默认Referer（买家/通用侧）
+     */
+    public static final String DEFAULT_REFERER = "https://www.goofish.com/";
+
+    /**
+     * 卖家中心Referer
+     * 卖家侧接口（如待评价列表）必须使用该来源，否则平台会拒绝
+     */
+    public static final String SELLER_REFERER = "https://seller.goofish.com/";
+
+    /**
+     * 构建标准的URL参数（默认1.0版本）
      *
      * @param apiName API名称（如：mtop.idle.web.xyh.item.list）
      * @param timestamp 时间戳
@@ -60,12 +105,25 @@ public class XianyuApiUtils {
      * @return URL参数Map
      */
     public static Map<String, String> buildStandardParams(String apiName, String timestamp, String sign) {
+        return buildStandardParams(apiName, timestamp, sign, DEFAULT_API_VERSION);
+    }
+
+    /**
+     * 构建标准的URL参数（指定版本号）
+     *
+     * @param apiName API名称（如：mtop.taobao.idle.item.polish）
+     * @param timestamp 时间戳
+     * @param sign 签名
+     * @param apiVersion API版本号（如：1.0、2.0、4.0）
+     * @return URL参数Map
+     */
+    public static Map<String, String> buildStandardParams(String apiName, String timestamp, String sign, String apiVersion) {
         Map<String, String> params = new HashMap<>();
         params.put("jsv", "2.7.2");
         params.put("appKey", APP_KEY);
         params.put("t", timestamp);
         params.put("sign", sign);
-        params.put("v", "1.0");
+        params.put("v", normalizeVersion(apiVersion));
         params.put("type", "originaljson");
         params.put("accountSite", "xianyu");
         params.put("dataType", "json");
@@ -73,6 +131,13 @@ public class XianyuApiUtils {
         params.put("api", apiName);
         params.put("sessionOption", "AutoLoginOnly");
         return params;
+    }
+
+    /**
+     * 规范化版本号，空值回落到默认版本
+     */
+    private static String normalizeVersion(String apiVersion) {
+        return (apiVersion == null || apiVersion.isBlank()) ? DEFAULT_API_VERSION : apiVersion.trim();
     }
     
     /**
@@ -237,6 +302,159 @@ public class XianyuApiUtils {
     }
 
     /**
+     * API调用可选项
+     * 不同闲鱼接口在版本号、来源页和响应格式上要求不一致：
+     * 擦亮是2.0、评价创建是4.0、卖家待评价列表需要 type=json + valueType=string 且来源必须是卖家中心。
+     * 用一个可选项对象承载这些差异，避免继续堆叠重载参数。
+     */
+    public static class ApiCallOptions {
+
+        private String apiVersion = DEFAULT_API_VERSION;
+        private String referer = DEFAULT_REFERER;
+        private final Map<String, String> extraQueryParams = new HashMap<>();
+        private final Map<String, String> extraHeaders = new HashMap<>();
+
+        public static ApiCallOptions create() {
+            return new ApiCallOptions();
+        }
+
+        /**
+         * 指定API版本号（同时决定URL路径版本段与v参数）
+         */
+        public ApiCallOptions version(String apiVersion) {
+            this.apiVersion = normalizeVersion(apiVersion);
+            return this;
+        }
+
+        /**
+         * 指定请求来源页，Origin会同步跟随
+         */
+        public ApiCallOptions referer(String referer) {
+            if (referer != null && !referer.isBlank()) {
+                this.referer = referer.trim();
+            }
+            return this;
+        }
+
+        /**
+         * 使用卖家中心作为来源页
+         */
+        public ApiCallOptions sellerReferer() {
+            return referer(SELLER_REFERER);
+        }
+
+        /**
+         * 覆盖响应格式；卖家待评价列表要求 json + valueType=string
+         */
+        public ApiCallOptions responseType(String type) {
+            if (type != null && !type.isBlank()) {
+                this.extraQueryParams.put("type", type.trim());
+            }
+            return this;
+        }
+
+        /**
+         * 追加查询参数（如 spm_cnt、valueType）
+         */
+        public ApiCallOptions query(String key, String value) {
+            if (key != null && !key.isBlank() && value != null) {
+                this.extraQueryParams.put(key, value);
+            }
+            return this;
+        }
+
+        /**
+         * 追加SPM统计参数
+         */
+        public ApiCallOptions spm(String spmCnt, String spmPre, String logId) {
+            query("spm_cnt", spmCnt);
+            query("spm_pre", spmPre);
+            query("log_id", logId);
+            return this;
+        }
+
+        /**
+         * 追加请求头
+         */
+        public ApiCallOptions header(String key, String value) {
+            if (key != null && !key.isBlank() && value != null) {
+                this.extraHeaders.put(key, value);
+            }
+            return this;
+        }
+
+        public String getApiVersion() {
+            return apiVersion;
+        }
+
+        public String getReferer() {
+            return referer;
+        }
+
+        public Map<String, String> getExtraQueryParams() {
+            return extraQueryParams;
+        }
+
+        public Map<String, String> getExtraHeaders() {
+            return extraHeaders;
+        }
+    }
+
+    /**
+     * 调用闲鱼API（POST方法，使用可选项控制版本/来源/响应格式，返回包含响应头的结果）
+     *
+     * @param apiName API名称
+     * @param dataMap 数据Map
+     * @param cookiesStr Cookie字符串
+     * @param options 调用可选项，为null时按默认1.0版本与买家侧来源处理
+     * @return 包含响应体和响应头的结果
+     */
+    public static ApiCallResultWithHeaders callApiWithOptions(String apiName, Map<String, Object> dataMap,
+                                                              String cookiesStr, ApiCallOptions options) {
+        ApiCallOptions effective = options != null ? options : ApiCallOptions.create();
+        try {
+            // 1. 解析Cookie获取token
+            Map<String, String> cookies = XianyuSignUtils.parseCookies(cookiesStr);
+            String token = XianyuSignUtils.extractToken(cookies);
+
+            if (token == null || token.isEmpty()) {
+                log.error("无法从Cookie中提取token: apiName={}", apiName);
+                return new ApiCallResultWithHeaders(null, null);
+            }
+
+            // 2. 生成时间戳并序列化数据；签名原文必须与请求体完全一致
+            String timestamp = String.valueOf(System.currentTimeMillis());
+            String dataJson = objectMapper.writeValueAsString(dataMap);
+            String sign = XianyuSignUtils.generateSign(timestamp, token, dataJson);
+
+            // 3. 构建URL参数，可选项中的同名键覆盖标准值
+            Map<String, String> params = buildStandardParams(apiName, timestamp, sign, effective.getApiVersion());
+            params.putAll(effective.getExtraQueryParams());
+
+            String url = buildUrl(apiName, params, effective.getApiVersion());
+
+            // 4. 构建请求头
+            Map<String, String> headers = buildStandardHeaders(cookiesStr, effective.getReferer());
+            headers.putAll(effective.getExtraHeaders());
+
+            // 5. 构建请求体并发送
+            Map<String, String> body = new HashMap<>();
+            body.put("data", dataJson);
+
+            log.info("调用闲鱼API: api={}, v={}", apiName, effective.getApiVersion());
+            HttpClientUtils.HttpResponseResult result = HttpClientUtils.postWithHeaders(url, headers, body);
+
+            return new ApiCallResultWithHeaders(
+                result != null ? result.getBody() : null,
+                result != null ? result.getHeaders() : null
+            );
+        } catch (Exception e) {
+            log.error("调用闲鱼API失败: apiName={}", apiName, e);
+            return new ApiCallResultWithHeaders(null, null);
+        }
+    }
+
+    /**
      * API调用结果（包含响应头）
      */
     public static class ApiCallResultWithHeaders {
@@ -288,10 +506,22 @@ public class XianyuApiUtils {
      * @return 完整URL
      */
     private static String buildUrl(String apiName, Map<String, String> params) {
+        return buildUrl(apiName, params, DEFAULT_API_VERSION);
+    }
+
+    /**
+     * 构建完整的API URL（指定版本号）
+     *
+     * @param apiName API名称（如：mtop.taobao.idle.item.polish）
+     * @param params URL参数
+     * @param apiVersion API版本号，决定路径中的版本段
+     * @return 完整URL
+     */
+    private static String buildUrl(String apiName, Map<String, String> params, String apiVersion) {
         StringBuilder url = new StringBuilder(BASE_URL);
         // API名称保持原样，不要替换点号
-        url.append(apiName).append("/1.0/");
-        
+        url.append(apiName).append("/").append(normalizeVersion(apiVersion)).append("/");
+
         if (params != null && !params.isEmpty()) {
             url.append("?");
             boolean first = true;

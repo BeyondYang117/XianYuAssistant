@@ -11,7 +11,8 @@ export function useAccountManager() {
     add: false,
     manualAdd: false,
     qrLogin: false,
-    deleteConfirm: false
+    deleteConfirm: false,
+    polish: false
   })
   
   const currentAccount = ref<Account | null>(null)
@@ -67,6 +68,12 @@ export function useAccountManager() {
     dialogs.deleteConfirm = true;
   };
 
+  // 打开擦亮配置
+  const configPolish = (account: Account) => {
+    currentAccount.value = account;
+    dialogs.polish = true;
+  };
+
   // 确认删除账号
   const confirmDelete = async () => {
     if (!deleteAccountId.value) return;
@@ -100,6 +107,7 @@ export function useAccountManager() {
     showQRLoginDialog,
     editAccount,
     deleteAccount,
+    configPolish,
     confirmDelete
   }
 }

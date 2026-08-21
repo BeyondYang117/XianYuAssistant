@@ -9,6 +9,7 @@ import IconEmpty from '@/components/icons/IconEmpty.vue'
 import IconClock from '@/components/icons/IconClock.vue'
 import IconCheck from '@/components/icons/IconCheck.vue'
 import IconAlert from '@/components/icons/IconAlert.vue'
+import IconSparkle from '@/components/icons/IconSparkle.vue'
 
 interface Props {
   accounts: Account[]
@@ -18,6 +19,7 @@ interface Props {
 interface Emits {
   (e: 'edit', account: Account): void
   (e: 'delete', id: number): void
+  (e: 'polish', account: Account): void
 }
 
 defineProps<Props>()
@@ -108,6 +110,10 @@ const getStatusBg = (status: number) => {
           <IconEdit />
           <span>编辑</span>
         </button>
+        <button class="account-card__btn account-card__btn--polish" @click="emit('polish', account)">
+          <IconSparkle />
+          <span>擦亮</span>
+        </button>
         <button class="account-card__btn account-card__btn--delete" @click="emit('delete', account.id)">
           <IconTrash />
           <span>删除</span>
@@ -158,6 +164,10 @@ const getStatusBg = (status: number) => {
             <button class="table__action table__action--edit" @click="emit('edit', account)">
               <IconEdit />
               <span>编辑</span>
+            </button>
+            <button class="table__action table__action--polish" @click="emit('polish', account)">
+              <IconSparkle />
+              <span>擦亮</span>
             </button>
             <button class="table__action table__action--delete" @click="emit('delete', account.id)">
               <IconTrash />
@@ -434,6 +444,21 @@ const getStatusBg = (status: number) => {
   backdrop-filter: blur(12px);
 }
 
+.account-card__btn--polish {
+  color: #ff9f0a;
+  background: rgba(255,159,10,.15);
+  border: 1px solid rgba(255,159,10,.25);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+@media (hover: hover) {
+  .account-card__btn--polish:hover {
+    background: rgba(255,159,10,.22);
+    border-color: rgba(255,159,10,.35);
+  }
+}
+
 @media (hover: hover) {
   .account-card__btn--delete:hover {
     background: rgba(255,69,58,.22);
@@ -585,6 +610,19 @@ const getStatusBg = (status: number) => {
   color: var(--c-danger);
   border-color: rgba(255,69,58,.25);
   background: rgba(255,69,58,.12);
+}
+
+.table__action--polish {
+  color: #ff9f0a;
+  border-color: rgba(255,159,10,.25);
+  background: rgba(255,159,10,.12);
+}
+
+@media (hover: hover) {
+  .table__action--polish:hover {
+    background: rgba(255,159,10,.18);
+    border-color: rgba(255,159,10,.35);
+  }
 }
 
 @media (hover: hover) {

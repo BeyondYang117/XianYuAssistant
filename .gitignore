@@ -35,6 +35,7 @@ build/
 
 ### Database ###
 /dbdata/
+/data/.jwt_secret
 *.db
 *.db-journal
 /logs/

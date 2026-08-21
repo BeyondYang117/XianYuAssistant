@@ -104,26 +104,17 @@
 
 #### 一键部署脚本
 
+推荐下载并运行项目根目录的 `deploy.sh`。它会自动创建数据目录和随机 `JWT_SECRET`，并在升级时复用密钥：
+
 **Linux/Mac**:
 ```bash
-docker run -d \
-  --name xianyu-assistant \
-  -p 12400:12400 \
-  -v $(pwd)/data/dbdata:/app/dbdata \
-  -v $(pwd)/data/logs:/app/logs \
-  --restart unless-stopped \
-  abu116/xianyu-help:latest
+chmod +x deploy.sh
+./deploy.sh
 ```
 
 **Windows PowerShell**:
 ```powershell
-docker run -d `
-  --name xianyu-assistant `
-  -p 12400:12400 `
-  -v ${PWD}/data/dbdata:/app/dbdata `
-  -v ${PWD}/data/logs:/app/logs `
-  --restart unless-stopped `
-  abu116/xianyu-help:latest
+双击下载的 `deploy.sh` 不适用于 PowerShell，请使用部署页中的 PowerShell 命令，或在 WSL/Git Bash 中运行上述脚本。
 ```
 
 #### 自定义配置
@@ -131,9 +122,11 @@ docker run -d `
 通过环境变量自定义配置：
 
 ```bash
+export JWT_SECRET="$(openssl rand -base64 48)"
 docker run -d \
   --name xianyu-assistant \
   -p 12400:12400 \
+  -e JWT_SECRET \
   -e JAVA_OPTS="-Xms256m -Xmx512m" \
   -v /your/path/dbdata:/app/dbdata \
   -v /your/path/logs:/app/logs \
@@ -150,6 +143,9 @@ docker run -d \
 | `-v /app/logs` | - | 应用日志目录 |
 | `-e JAVA_OPTS` | -Xms256m -Xmx512m | JVM内存参数 |
 | `-e SERVER_PORT` | 12400 | Spring Boot服务端口（容器内部） |
+| `-e JWT_SECRET` | 自动生成 | JWT签名密钥；生产环境必须设置并在升级时保持不变 |
+
+推荐使用项目提供的 `deploy.sh`：首次运行会在 `data/.jwt_secret` 生成随机密钥，后续更新会自动复用。请妥善备份该文件，不要提交到代码仓库。也可以通过 `PORT`、`DATA_DIR`、`LOG_DIR`、`JAVA_OPTS` 和 `TZ` 环境变量自定义部署。
 
 > **数据目录说明**:
 > - `dbdata/xianyu_assistant.db` - SQLite数据库（账号、商品、订单、配置等）

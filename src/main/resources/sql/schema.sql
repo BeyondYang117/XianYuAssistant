@@ -549,3 +549,35 @@ CREATE TABLE IF NOT EXISTS xianyu_delivery_lease (
 
 CREATE INDEX IF NOT EXISTS idx_delivery_lease_until
 ON xianyu_delivery_lease(lease_until);
+
+-- 账号级自动任务配置：每日擦亮、自动好评等按账号开关与时间点
+CREATE TABLE IF NOT EXISTS xianyu_account_task_setting (
+    xianyu_account_id BIGINT PRIMARY KEY,
+    auto_polish_on TINYINT NOT NULL DEFAULT 0,      -- 是否开启每日自动擦亮
+    polish_time VARCHAR(5) NOT NULL DEFAULT '03:00',-- 擦亮触发时刻（北京时间 HH:mm）
+    last_polish_date VARCHAR(10) NOT NULL DEFAULT '', -- 最近成功擦亮的日期（yyyy-MM-dd），当日幂等依据
+    last_polish_at BIGINT NOT NULL DEFAULT 0,       -- 最近一次擦亮执行时间戳（毫秒）
+    created_time DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_time DATETIME DEFAULT (datetime('now', 'localtime'))
+);
+
+-- 账号自动任务执行记录：run_key 唯一约束提供跨重启的幂等抢占
+CREATE TABLE IF NOT EXISTS xianyu_account_task_run (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_key VARCHAR(300) NOT NULL,                  -- 形如 polish:{accountId}:{itemId}:{yyyy-MM-dd}
+    xianyu_account_id BIGINT NOT NULL,
+    task_type VARCHAR(40) NOT NULL,                 -- auto_polish / auto_rate
+    target_id VARCHAR(100) NOT NULL DEFAULT '',     -- 商品ID或订单ID
+    status VARCHAR(20) NOT NULL,                    -- running / success / failed / needs_review
+    success_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT NOT NULL DEFAULT '',
+    started_at BIGINT NOT NULL,
+    finished_at BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_account_task_run_key
+ON xianyu_account_task_run(run_key);
+
+CREATE INDEX IF NOT EXISTS idx_account_task_run_account_type
+ON xianyu_account_task_run(xianyu_account_id, task_type, started_at DESC);

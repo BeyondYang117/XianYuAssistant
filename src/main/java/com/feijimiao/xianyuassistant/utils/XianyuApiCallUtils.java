@@ -61,6 +61,92 @@ public class XianyuApiCallUtils {
                                           Map<String, String> extraQueryParams) {
         return callApiWithRetry(accountId, apiName, dataMap, cookiesStr, extraHeaders, extraQueryParams, 0);
     }
+
+    /**
+     * 调用闲鱼API（带自动刷新机制 + 版本/来源/响应格式可选项）
+     * 复用统一的 Set-Cookie 回写、令牌过期重试和风控识别；擦亮、评价、改价等非1.0接口走这里
+     *
+     * @param accountId 账号ID
+     * @param apiName API名称
+     * @param dataMap 数据Map
+     * @param cookiesStr Cookie字符串
+     * @param options 调用可选项
+     * @return API响应结果
+     */
+    public ApiCallResult callApiWithOptions(Long accountId, String apiName,
+                                            Map<String, Object> dataMap, String cookiesStr,
+                                            XianyuApiUtils.ApiCallOptions options) {
+        return callApiWithOptions(accountId, apiName, dataMap, cookiesStr, options, 0);
+    }
+
+    private ApiCallResult callApiWithOptions(Long accountId, String apiName,
+                                             Map<String, Object> dataMap, String cookiesStr,
+                                             XianyuApiUtils.ApiCallOptions options,
+                                             int retryCount) {
+        try {
+            XianyuApiUtils.ApiCallResultWithHeaders result =
+                    XianyuApiUtils.callApiWithOptions(apiName, dataMap, cookiesStr, options);
+
+            String response = result.getBody();
+            if (response == null || response.isEmpty()) {
+                log.error("【账号{}】API调用失败：响应为空, api={}", accountId, apiName);
+                return new ApiCallResult(false, null, "响应为空", false);
+            }
+
+            // 与1.0通道一致：先把响应Set-Cookie合并回库，避免后续调用使用过期签名token
+            List<String> setCookieHeaders = result.getSetCookieHeaders();
+            if (!setCookieHeaders.isEmpty()) {
+                updateCookiesFromResponse(accountId, cookiesStr, setCookieHeaders);
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> responseMap = objectMapper.readValue(response, Map.class);
+            @SuppressWarnings("unchecked")
+            List<String> ret = (List<String>) responseMap.get("ret");
+
+            if (ret == null || ret.isEmpty()) {
+                log.error("【账号{}】API响应格式错误：缺少ret字段, api={}", accountId, apiName);
+                return new ApiCallResult(false, response, "响应格式错误", false);
+            }
+
+            String retCode = ret.get(0);
+            if (retCode.contains("SUCCESS")) {
+                log.info("【账号{}】API调用成功: {}", accountId, apiName);
+                return new ApiCallResult(true, response, null, false);
+            }
+
+            if (isTokenExpired(retCode)) {
+                log.warn("【账号{}】{} 令牌过期，尝试自动刷新... ({}/{})", accountId, apiName, retryCount, MAX_RETRY_COUNT);
+                if (retryCount >= MAX_RETRY_COUNT) {
+                    log.error("【账号{}】令牌刷新重试次数已达上限，停止重试", accountId);
+                    return new ApiCallResult(false, response, "令牌过期且自动刷新失败", true);
+                }
+
+                if (cookieRefreshService.refreshCookie(accountId)) {
+                    Thread.sleep(RETRY_INTERVAL);
+                    String newCookieStr = accountService.getCookieByAccountId(accountId);
+                    if (newCookieStr != null && !newCookieStr.isEmpty()) {
+                        return callApiWithOptions(accountId, apiName, dataMap, newCookieStr, options, retryCount + 1);
+                    }
+                    log.error("【账号{}】获取新Cookie失败", accountId);
+                } else {
+                    log.warn("【账号{}】Cookie自动刷新失败", accountId);
+                }
+                return new ApiCallResult(false, response, "令牌过期，自动刷新失败", true);
+            }
+
+            if (isRiskControl(retCode)) {
+                log.error("【账号{}】{} 触发风控: {}", accountId, apiName, retCode);
+                return new ApiCallResult(false, response, "触发风控，需要人工处理", false);
+            }
+
+            log.error("【账号{}】API调用失败: api={}, ret={}", accountId, apiName, retCode);
+            return new ApiCallResult(false, response, retCode, false);
+        } catch (Exception e) {
+            log.error("【账号{}】API调用异常: apiName={}", accountId, apiName, e);
+            return new ApiCallResult(false, null, "调用异常: " + e.getMessage(), false);
+        }
+    }
     
     private ApiCallResult callApiWithRetry(Long accountId, String apiName,
                                            Map<String, Object> dataMap, String cookiesStr,
