@@ -31,11 +31,9 @@ let timer: ReturnType<typeof setInterval> | null = null
 const peerName = computed(() => props.conversation?.peerUserName || props.conversation?.peerUserId || '选择一个会话')
 const isUser = (message: ChatMessage) => (message.contentType === 1 || message.contentType === 2) && message.senderUserId !== props.accountUnb
 const isMine = (message: ChatMessage) => !isUser(message) && [1, 2, 999, 997, 888, 887].includes(message.contentType)
-const replyLabel = (message: ChatMessage) => {
-  if (message.contentType === 999 || message.contentType === 997) return '人工回复'
-  if (message.contentType === 888 || message.contentType === 887) return 'AI自动回复'
-  return ''
-}
+const isAiReply = (message: ChatMessage) => message.contentType === 888 || message.contentType === 887
+// 999/997 手动回复、1/2 为手机端自己发的，都算人工
+const replyLabel = (message: ChatMessage) => isAiReply(message) ? 'AI自动回复' : '人工回复'
 const images = (message: ChatMessage) => message.imageUrls?.length ? message.imageUrls : (message.msgContent?.startsWith('[图片]') && /https?:/.test(message.msgContent) ? [message.msgContent.slice(4).trim()] : [])
 const text = (message: ChatMessage) => images(message).length && (message.msgContent || '').startsWith('[图片]') ? '' : (message.msgContent || '')
 const time = (value: string | number) => new Date(Number(value)).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -113,9 +111,9 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
             <div class="chat-message__meta">
               <span>{{ isUser(message) ? (message.senderUserName || peerName) : '我' }}</span>
               <span
-                v-if="replyLabel(message)"
+                v-if="isMine(message)"
                 class="chat-message__reply-label"
-                :class="{ 'chat-message__reply-label--ai': message.contentType === 888 || message.contentType === 887 }"
+                :class="{ 'chat-message__reply-label--ai': isAiReply(message) }"
               >{{ replyLabel(message) }}</span>
               <span>{{ time(message.messageTime) }}</span>
             </div>
