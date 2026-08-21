@@ -17,7 +17,7 @@ COPY vue-code/ ./
 RUN npm run build:spring
 
 # 阶段2: 构建后端 JAR
-FROM eclipse-temurin:21-jdk-alpine AS backend-build
+FROM maven:3.9.11-eclipse-temurin-21-alpine AS backend-build
 
 WORKDIR /app
 
@@ -25,9 +25,7 @@ WORKDIR /app
 RUN mkdir -p /root/.m2 && echo '<?xml version="1.0" encoding="UTF-8"?><settings xmlns="http://maven.apache.org/SETTINGS/1.2.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd"><mirrors><mirror><id>aliyun</id><mirrorOf>central</mirrorOf><name>Aliyun Maven</name><url>https://maven.aliyun.com/repository/public</url></mirror></mirrors></settings>' > /root/.m2/settings.xml
 
 # 先复制 Maven 配置和 pom.xml，利用缓存
-COPY .mvn/ .mvn/
-COPY mvnw mvnw.cmd pom.xml ./
-RUN chmod +x mvnw
+COPY pom.xml ./
 
 # 复制前端构建产物到 static 目录
 COPY --from=frontend-build /app/vue-code/../src/main/resources/static src/main/resources/static/
@@ -36,7 +34,7 @@ COPY --from=frontend-build /app/vue-code/../src/main/resources/static src/main/r
 COPY src/ src/
 
 # 构建 JAR（跳过测试）
-RUN ./mvnw clean package -DskipTests
+RUN mvn -B clean package -DskipTests
 
 # 阶段3: 运行时镜像
 FROM eclipse-temurin:21-jre-alpine
@@ -58,7 +56,6 @@ EXPOSE 12400
 # 环境变量
 ENV JAVA_OPTS="-Xms256m -Xmx512m"
 ENV SERVER_PORT=12400
-ENV ALI_API_KEY=""
 
 # 启动命令
 ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -Dserver.port=${SERVER_PORT} -jar app.jar"]
