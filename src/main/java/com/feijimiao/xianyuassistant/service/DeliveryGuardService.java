@@ -1,6 +1,7 @@
 package com.feijimiao.xianyuassistant.service;
 
 import com.feijimiao.xianyuassistant.mapper.XianyuDeliveryLeaseMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
@@ -15,6 +16,7 @@ public class DeliveryGuardService {
     private final long leaseMillis;
     private final LongSupplier clock;
 
+    @Autowired
     public DeliveryGuardService(XianyuDeliveryLeaseMapper leaseMapper) {
         this(leaseMapper, DEFAULT_LEASE_MILLIS, System::currentTimeMillis);
     }
