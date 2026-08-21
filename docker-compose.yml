@@ -23,7 +23,7 @@ services:
       - no-new-privileges:true
     depends_on:
       searxng:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent --show-error http://127.0.0.1:$${SERVER_PORT:-12400}/ > /dev/null"]
       interval: 30s
@@ -41,7 +41,9 @@ services:
       UWSGI_THREADS: ${SEARXNG_THREADS:-2}
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
-      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+      # Mount the configuration directory, not a single file. The image startup
+      # script normalizes settings.yml and needs write access during bootstrap.
+      - ./searxng-config:/etc/searxng:rw
     expose:
       - "8080"
     restart: unless-stopped
@@ -54,3 +56,9 @@ services:
       - CHOWN
       - SETGID
       - SETUID
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; request = urllib.request.Request('http://127.0.0.1:8080/', headers={'X-Forwarded-For': '127.0.0.1', 'X-Real-IP': '127.0.0.1'}); urllib.request.urlopen(request, timeout=3)\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

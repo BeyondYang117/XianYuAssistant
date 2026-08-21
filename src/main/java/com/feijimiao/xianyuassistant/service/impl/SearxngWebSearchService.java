@@ -70,6 +70,10 @@ public class SearxngWebSearchService implements WebSearchService {
                             .queryParam("language", "zh-CN")
                             .queryParam("safesearch", "1")
                             .build().toUri())
+                    .headers(headers -> {
+                        headers.set("X-Forwarded-For", "127.0.0.1");
+                        headers.set("X-Real-IP", "127.0.0.1");
+                    })
                     .retrieve()
                     .bodyToMono(JsonNode.class)
                     .timeout(Duration.ofMillis(Math.max(500, timeoutMs)))
