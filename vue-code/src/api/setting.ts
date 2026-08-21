@@ -50,3 +50,12 @@ export function testEmail() {
     data: {}
   })
 }
+
+/** 测试 Bark 配置 */
+export function testBark() {
+  return request<string>({
+    url: '/setting/testBark',
+    method: 'post',
+    data: {}
+  })
+}

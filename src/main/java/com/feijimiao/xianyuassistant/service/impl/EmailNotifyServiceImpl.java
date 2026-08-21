@@ -1,6 +1,7 @@
 package com.feijimiao.xianyuassistant.service.impl;
 
 import com.feijimiao.xianyuassistant.service.EmailNotifyService;
+import com.feijimiao.xianyuassistant.service.BarkNotifyService;
 import com.feijimiao.xianyuassistant.service.SysSettingService;
 import jakarta.mail.internet.MimeMessage;
 import lombok.extern.slf4j.Slf4j;
@@ -30,9 +31,16 @@ public class EmailNotifyServiceImpl implements EmailNotifyService {
     @Autowired
     private SysSettingService sysSettingService;
 
+    @Autowired
+    private BarkNotifyService barkNotifyService;
+
     @Override
     @Async
     public void sendWsDisconnectNotifyEmail(Long accountId, String accountNote) {
+        if (isWsDisconnectNotifyEnabled()) {
+            sendBark("【闲鱼助手】消息监听已掉线 - " + accountLabel(accountId, accountNote),
+                    "账号ID：" + accountId + "\n账号备注：" + safe(accountNote) + "\nWebSocket消息监听连接已断开，系统多次重连失败。\n触发时间：" + now());
+        }
         if (!isEmailConfigured()) {
             log.warn("邮箱未配置，跳过发送WebSocket断开连接通知邮件");
             return;
@@ -74,6 +82,10 @@ public class EmailNotifyServiceImpl implements EmailNotifyService {
     @Override
     @Async
     public void sendCookieExpireNotifyEmail(Long accountId, String accountNote) {
+        if (isCookieExpireNotifyEnabled()) {
+            sendBark("【闲鱼助手】Cookie已过期 - " + accountLabel(accountId, accountNote),
+                    "账号ID：" + accountId + "\n账号备注：" + safe(accountNote) + "\nCookie已过期且无法自动续期，请更新Cookie。\n触发时间：" + now());
+        }
         if (!isEmailConfigured()) {
             log.warn("邮箱未配置，跳过发送Cookie过期通知邮件");
             return;
@@ -258,9 +270,31 @@ public class EmailNotifyServiceImpl implements EmailNotifyService {
         return str != null && !str.trim().isEmpty();
     }
 
+    private void sendBark(String title, String body) {
+        try {
+            barkNotifyService.sendNotification(title, body);
+        } catch (Exception e) {
+            log.error("Bark通知调用失败: title={}", title, e);
+        }
+    }
+
+    private String accountLabel(Long accountId, String accountNote) {
+        return accountNote != null && !accountNote.trim().isEmpty() ? accountNote.trim() : "账号" + accountId;
+    }
+
+    private String safe(String value) {
+        return value == null || value.trim().isEmpty() ? "未知" : value.trim();
+    }
+
+    private String now() {
+        return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date());
+    }
+
     @Override
     @Async
     public void sendKamiAlertEmail(String toEmail, String configName, int availableCount, int totalCount) {
+        sendBark("【闲鱼助手】卡密库存预警 - " + safe(configName),
+                "可用数量：" + availableCount + "/" + totalCount + "\n请及时补充卡密。\n触发时间：" + now());
         if (!isEmailConfigured()) {
             log.warn("邮箱未配置，跳过发送卡密预警邮件");
             return;
@@ -299,6 +333,8 @@ public class EmailNotifyServiceImpl implements EmailNotifyService {
     @Override
     @Async
     public void sendKamiStockOutEmail(String toEmail, String configName, String orderId) {
+        sendBark("【闲鱼助手】卡密库存不足 - " + safe(configName),
+                "触发订单：" + safe(orderId) + "\n卡密仓库已无可用卡密，订单无法自动发货。\n触发时间：" + now());
         if (!isEmailConfigured()) {
             log.warn("邮箱未配置，跳过发送卡密库存不足邮件");
             return;
@@ -357,6 +393,8 @@ public class EmailNotifyServiceImpl implements EmailNotifyService {
     @Override
     @Async
     public void sendAutoDeliveryFailEmail(String toEmail, String xyGoodsId, String orderId, String failReason) {
+        sendBark("【闲鱼助手】自动发货失败 - " + safe(orderId),
+                "商品ID：" + safe(xyGoodsId) + "\n订单ID：" + safe(orderId) + "\n失败原因：" + safe(failReason) + "\n失败时间：" + now());
         if (!isEmailConfigured()) {
             log.warn("邮箱未配置，跳过发送自动发货失败邮件");
             return;
@@ -433,6 +471,10 @@ public class EmailNotifyServiceImpl implements EmailNotifyService {
     @Override
     @Async
     public void sendCaptchaRequiredEmail(Long accountId, String accountNote, String reason) {
+        if (isCookieExpireNotifyEnabled()) {
+            sendBark("【闲鱼助手】触发风控验证 - " + accountLabel(accountId, accountNote),
+                    "账号ID：" + accountId + "\n账号备注：" + safe(accountNote) + "\n触发原因：" + safe(reason) + "\n请人工完成滑块验证并更新Cookie。\n触发时间：" + now());
+        }
         if (!isEmailConfigured()) {
             log.warn("邮箱未配置，跳过发送风控验证通知邮件");
             return;

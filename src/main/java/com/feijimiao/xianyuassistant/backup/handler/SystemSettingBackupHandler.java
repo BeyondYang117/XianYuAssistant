@@ -20,7 +20,8 @@ public class SystemSettingBackupHandler implements DataBackupHandler {
             "sys_prompt", "similarity_threshold",
             "email_smtp_host", "email_smtp_port", "email_smtp_username", "email_smtp_password",
             "email_smtp_from", "email_smtp_ssl",
-            "email_notify_ws_disconnect_enabled", "email_notify_cookie_expire_enabled"
+            "email_notify_ws_disconnect_enabled", "email_notify_cookie_expire_enabled",
+            "bark_server_url", "bark_device_key", "bark_enabled"
     );
 
     @Autowired

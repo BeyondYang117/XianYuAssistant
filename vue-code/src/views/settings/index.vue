@@ -3,7 +3,7 @@ import { ref, onMounted, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCurrentUser, changePassword } from '@/api/system'
 import { logout } from '@/api/auth'
-import { getSetting, saveSetting, testEmail } from '@/api/setting'
+import { getSetting, saveSetting, testEmail, testBark } from '@/api/setting'
 import { getAIStatus } from '@/api/ai'
 import { getBackupModules, exportBackup, importBackup, getLogDates, downloadLog, type BackupModule } from '@/api/backup'
 import { toast } from '@/utils/toast'
@@ -97,6 +97,9 @@ const EMAIL_SMTP_FROM_KEY = 'email_smtp_from'
 const EMAIL_SMTP_SSL_KEY = 'email_smtp_ssl'
 const EMAIL_WS_DISCONNECT_NOTIFY_KEY = 'email_notify_ws_disconnect_enabled'
 const EMAIL_COOKIE_EXPIRE_NOTIFY_KEY = 'email_notify_cookie_expire_enabled'
+const BARK_SERVER_URL_KEY = 'bark_server_url'
+const BARK_DEVICE_KEY = 'bark_device_key'
+const BARK_ENABLED_KEY = 'bark_enabled'
 
 const emailSmtpHost = ref('')
 const emailSmtpPort = ref('465')
@@ -111,6 +114,13 @@ const emailConfigured = ref(false)
 const emailConfigExpanded = ref(true)
 const wsDisconnectNotifyEnabled = ref(false)
 const cookieExpireNotifyEnabled = ref(false)
+const barkServerUrl = ref('https://api.day.app')
+const barkDeviceKey = ref('')
+const barkEnabled = ref(true)
+const barkSaving = ref(false)
+const barkTesting = ref(false)
+const showBarkDeviceKey = ref(false)
+const barkConfigured = ref(false)
 
 // AI 状态
 const aiStatus = ref({
@@ -128,7 +138,7 @@ const menuItems = [
   { key: 'account', label: '系统账号', icon: markRaw(IconUser) },
   { key: 'ai', label: 'AI 服务配置', icon: markRaw(IconRobot) },
   { key: 'prompt', label: 'AI客服配置', icon: markRaw(IconChat) },
-  { key: 'email', label: '邮箱通知', icon: markRaw(IconMail) },
+  { key: 'email', label: '系统通知', icon: markRaw(IconMail) },
   { key: 'backup', label: '备份与恢复', icon: markRaw(IconBackup) },
   { key: 'about', label: '关于', icon: markRaw(IconInfo) }
 ]
@@ -174,7 +184,7 @@ onMounted(async () => {
   await loadEmbeddingConfig()
   // 加载 AI 状态
   await loadAIStatus()
-  // 加载邮箱通知配置
+  // 加载系统通知配置
   await loadEmailConfig()
 })
 
@@ -456,7 +466,7 @@ function handleResetEmbeddingConfig() {
 
 async function loadEmailConfig() {
   try {
-    const [hostRes, portRes, userRes, passRes, fromRes, sslRes, wsDisconnectRes, cookieExpireRes] = await Promise.all([
+    const [hostRes, portRes, userRes, passRes, fromRes, sslRes, wsDisconnectRes, cookieExpireRes, barkUrlRes, barkKeyRes, barkEnabledRes] = await Promise.all([
       getSetting({ settingKey: EMAIL_SMTP_HOST_KEY }),
       getSetting({ settingKey: EMAIL_SMTP_PORT_KEY }),
       getSetting({ settingKey: EMAIL_SMTP_USERNAME_KEY }),
@@ -464,7 +474,10 @@ async function loadEmailConfig() {
       getSetting({ settingKey: EMAIL_SMTP_FROM_KEY }),
       getSetting({ settingKey: EMAIL_SMTP_SSL_KEY }),
       getSetting({ settingKey: EMAIL_WS_DISCONNECT_NOTIFY_KEY }),
-      getSetting({ settingKey: EMAIL_COOKIE_EXPIRE_NOTIFY_KEY })
+      getSetting({ settingKey: EMAIL_COOKIE_EXPIRE_NOTIFY_KEY }),
+      getSetting({ settingKey: BARK_SERVER_URL_KEY }),
+      getSetting({ settingKey: BARK_DEVICE_KEY }),
+      getSetting({ settingKey: BARK_ENABLED_KEY })
     ])
 
     if (hostRes.code === 200 && hostRes.data) emailSmtpHost.value = hostRes.data.settingValue || ''
@@ -483,8 +496,14 @@ async function loadEmailConfig() {
     if (cookieExpireRes.code === 200 && cookieExpireRes.data && cookieExpireRes.data.settingValue) {
       cookieExpireNotifyEnabled.value = cookieExpireRes.data.settingValue === '1' || cookieExpireRes.data.settingValue === 'true'
     }
+    if (barkUrlRes.code === 200 && barkUrlRes.data && barkUrlRes.data.settingValue) barkServerUrl.value = barkUrlRes.data.settingValue
+    if (barkKeyRes.code === 200 && barkKeyRes.data) barkDeviceKey.value = barkKeyRes.data.settingValue || ''
+    if (barkEnabledRes.code === 200 && barkEnabledRes.data && barkEnabledRes.data.settingValue !== undefined) {
+      barkEnabled.value = barkEnabledRes.data.settingValue === '1' || barkEnabledRes.data.settingValue === 'true'
+    }
 
     emailConfigured.value = !!(emailSmtpHost.value && emailSmtpPort.value && emailSmtpUsername.value && emailSmtpPassword.value && emailSmtpFrom.value)
+    barkConfigured.value = !!barkDeviceKey.value.trim()
     emailConfigExpanded.value = !emailConfigured.value
   } catch (e) {
     console.error('加载邮箱配置失败:', e)
@@ -516,12 +535,32 @@ async function handleSaveEmailConfig() {
   }
 }
 
+async function handleSaveBarkConfig() {
+  barkSaving.value = true
+  try {
+    const [urlRes, keyRes, enabledRes] = await Promise.all([
+      saveSetting({ settingKey: BARK_SERVER_URL_KEY, settingValue: barkServerUrl.value.trim(), settingDesc: 'Bark服务器地址' }),
+      saveSetting({ settingKey: BARK_DEVICE_KEY, settingValue: barkDeviceKey.value.trim(), settingDesc: 'Bark设备Key' }),
+      saveSetting({ settingKey: BARK_ENABLED_KEY, settingValue: barkEnabled.value ? '1' : '0', settingDesc: '是否启用Bark通知（1启用，0关闭）' })
+    ])
+    if (urlRes.code === 200 && keyRes.code === 200 && enabledRes.code === 200) {
+      barkConfigured.value = !!barkDeviceKey.value.trim()
+      toast.success('Bark配置保存成功')
+    }
+  } catch (e) {
+    console.error('保存Bark配置失败:', e)
+    toast.error('保存Bark配置失败')
+  } finally {
+    barkSaving.value = false
+  }
+}
+
 async function handleSaveWsDisconnectNotify() {
   try {
     const res = await saveSetting({
       settingKey: EMAIL_WS_DISCONNECT_NOTIFY_KEY,
       settingValue: wsDisconnectNotifyEnabled.value ? '1' : '0',
-      settingDesc: 'WebSocket断开且无法重连时邮箱通知开关（1启用，0关闭）'
+      settingDesc: 'WebSocket断开且无法重连时系统通知开关（1启用，0关闭）'
     })
     if (res.code === 200) {
       toast.success(`闲鱼账号消息监听掉线通知已${wsDisconnectNotifyEnabled.value ? '开启' : '关闭'}`)
@@ -537,7 +576,7 @@ async function handleSaveCookieExpireNotify() {
     const res = await saveSetting({
       settingKey: EMAIL_COOKIE_EXPIRE_NOTIFY_KEY,
       settingValue: cookieExpireNotifyEnabled.value ? '1' : '0',
-      settingDesc: 'Cookie过期且无法续期时邮箱通知开关（1启用，0关闭）'
+      settingDesc: 'Cookie过期且无法续期时系统通知开关（1启用，0关闭）'
     })
     if (res.code === 200) {
       toast.success(`Cookie过期通知已${cookieExpireNotifyEnabled.value ? '开启' : '关闭'}`)
@@ -562,6 +601,20 @@ async function handleTestEmail() {
     toast.error(e.message || '测试邮箱失败')
   } finally {
     emailTesting.value = false
+  }
+}
+
+async function handleTestBark() {
+  barkTesting.value = true
+  try {
+    const res = await testBark()
+    if (res.code === 200) toast.success('Bark测试推送已发送')
+    else toast.error(res.msg || 'Bark测试推送失败')
+  } catch (e: any) {
+    console.error('测试Bark失败:', e)
+    toast.error(e.message || 'Bark测试推送失败')
+  } finally {
+    barkTesting.value = false
   }
 }
 
@@ -1147,9 +1200,9 @@ function handleBackupMenuEnter() {
         </div>
       </div>
 
-      <!-- 邮箱通知 -->
+      <!-- 系统通知 -->
       <div v-if="activeMenu === 'email'" class="settings__panel">
-        <div class="settings__panel-title">邮箱通知</div>
+        <div class="settings__panel-title">系统通知</div>
 
         <!-- 邮箱配置 -->
         <div class="settings__section">
@@ -1176,7 +1229,7 @@ function handleBackupMenuEnter() {
               </button>
             </div>
           </div>
-          <p class="settings__desc">配置SMTP邮箱服务，用于接收系统通知（如滑块验证提醒）。发件人固定使用SMTP用户名，收件人邮箱用于接收通知。</p>
+          <p class="settings__desc">配置SMTP邮箱服务，用于接收系统通知。邮箱未配置时，可单独使用下方 Bark 推送。</p>
 
           <div v-if="emailConfigExpanded || !emailConfigured" class="settings__form">
             <div class="settings__field">
@@ -1255,10 +1308,59 @@ function handleBackupMenuEnter() {
           </div>
         </div>
 
+        <!-- Bark 配置 -->
+        <div class="settings__section">
+          <div class="settings__section-header">
+            <div class="settings__section-title">Bark 推送</div>
+            <div class="settings__section-header-actions">
+              <button
+                v-if="barkConfigured"
+                class="settings__toggle-btn settings__toggle-btn--test"
+                :disabled="barkTesting"
+                @click="handleTestBark"
+              >
+                {{ barkTesting ? '发送中...' : '发送测试推送' }}
+              </button>
+              <span class="settings__status-badge" :class="barkConfigured ? 'settings__status-badge--success' : ''">
+                {{ barkConfigured ? '已配置' : '未配置' }}
+              </span>
+            </div>
+          </div>
+          <p class="settings__desc">支持 Bark 官方服务或自建 Bark 服务。设备 Key 必填，服务器地址留空时使用 https://api.day.app。</p>
+          <div class="settings__form">
+            <div class="settings__field">
+              <label class="settings__label">服务器地址</label>
+              <input v-model="barkServerUrl" type="text" class="settings__input" placeholder="https://api.day.app" :disabled="barkSaving" />
+            </div>
+            <div class="settings__field">
+              <label class="settings__label">设备 Key</label>
+              <div class="settings__input-wrap">
+                <input v-model="barkDeviceKey" :type="showBarkDeviceKey ? 'text' : 'password'" class="settings__input" placeholder="Bark App 中复制的设备 Key" :disabled="barkSaving" />
+                <button class="settings__eye-btn" @click="showBarkDeviceKey = !showBarkDeviceKey" tabindex="-1">
+                  {{ showBarkDeviceKey ? '隐藏' : '显示' }}
+                </button>
+              </div>
+            </div>
+            <div class="settings__field">
+              <label class="settings__label">启用 Bark</label>
+              <label class="settings__switch">
+                <input type="checkbox" v-model="barkEnabled" :disabled="barkSaving" />
+                <span class="settings__switch-track"></span>
+                <span class="settings__switch-thumb"></span>
+              </label>
+            </div>
+            <div class="settings__actions">
+              <button class="settings__btn settings__btn--primary" :disabled="barkSaving" @click="handleSaveBarkConfig">
+                {{ barkSaving ? '保存中...' : '保存' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- 通知开关 -->
         <div class="settings__section">
           <div class="settings__section-title">通知开关</div>
-          <p class="settings__desc">选择哪些事件需要通过邮件通知您</p>
+          <p class="settings__desc">选择哪些事件需要通知您，已启用的邮箱和 Bark 渠道都会收到推送</p>
 
           <table class="settings__notify-table">
             <thead>
@@ -1271,13 +1373,13 @@ function handleBackupMenuEnter() {
             <tbody>
               <tr class="settings__notify-tr">
                 <td class="settings__notify-td">闲鱼账号消息监听掉线通知</td>
-                <td class="settings__notify-td settings__notify-td--desc">WebSocket连接失败时发送邮件通知</td>
+                <td class="settings__notify-td settings__notify-td--desc">WebSocket连接失败时发送通知</td>
                 <td class="settings__notify-td">
                   <label class="settings__switch">
                     <input
                       type="checkbox"
                       v-model="wsDisconnectNotifyEnabled"
-                      :disabled="!emailConfigured"
+                      :disabled="!emailConfigured && !(barkConfigured && barkEnabled)"
                       @change="handleSaveWsDisconnectNotify"
                     />
                     <span class="settings__switch-track"></span>
@@ -1287,13 +1389,13 @@ function handleBackupMenuEnter() {
               </tr>
               <tr class="settings__notify-tr">
                 <td class="settings__notify-td">Cookie过期通知</td>
-                <td class="settings__notify-td settings__notify-td--desc">Cookie过期且无法自动续期时发送邮件通知</td>
+                <td class="settings__notify-td settings__notify-td--desc">Cookie过期且无法自动续期时发送通知</td>
                 <td class="settings__notify-td">
                   <label class="settings__switch">
                     <input
                       type="checkbox"
                       v-model="cookieExpireNotifyEnabled"
-                      :disabled="!emailConfigured"
+                      :disabled="!emailConfigured && !(barkConfigured && barkEnabled)"
                       @change="handleSaveCookieExpireNotify"
                     />
                     <span class="settings__switch-track"></span>
@@ -1303,7 +1405,7 @@ function handleBackupMenuEnter() {
               </tr>
             </tbody>
           </table>
-          <p v-if="!emailConfigured" class="settings__hint" style="color:#e6a23c;margin-top:8px;">请先配置邮箱后再开启通知</p>
+          <p v-if="!emailConfigured && !(barkConfigured && barkEnabled)" class="settings__hint" style="color:#e6a23c;margin-top:8px;">请先配置邮箱，或配置并启用 Bark 后再开启通知</p>
         </div>
       </div>
 

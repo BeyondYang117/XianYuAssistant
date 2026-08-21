@@ -4,6 +4,7 @@ import com.feijimiao.xianyuassistant.common.ResultObject;
 import com.feijimiao.xianyuassistant.controller.dto.*;
 import com.feijimiao.xianyuassistant.service.SysSettingService;
 import com.feijimiao.xianyuassistant.service.EmailNotifyService;
+import com.feijimiao.xianyuassistant.service.BarkNotifyService;
 import com.feijimiao.xianyuassistant.service.bo.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,9 @@ public class SysSettingController {
 
     @Autowired(required = false)
     private EmailNotifyService emailNotifyService;
+
+    @Autowired(required = false)
+    private BarkNotifyService barkNotifyService;
 
     /**
      * 获取配置
@@ -147,6 +151,29 @@ public class SysSettingController {
         } catch (Exception e) {
             log.error("测试邮箱失败", e);
             return ResultObject.failed("测试邮箱失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 测试Bark配置
+     */
+    @PostMapping("/testBark")
+    public ResultObject<?> testBark() {
+        try {
+            if (barkNotifyService == null) {
+                return ResultObject.failed("Bark服务未初始化");
+            }
+            if (!barkNotifyService.isBarkConfigured()) {
+                return ResultObject.failed("Bark配置不完整，请先填写设备Key");
+            }
+            String error = barkNotifyService.sendTestBark();
+            if (error == null) {
+                return ResultObject.success("测试推送发送成功，请检查Bark");
+            }
+            return ResultObject.failed("发送失败: " + error);
+        } catch (Exception e) {
+            log.error("测试Bark失败", e);
+            return ResultObject.failed("测试Bark失败: " + e.getMessage());
         }
     }
 }
