@@ -112,7 +112,7 @@ docker run -d \
   -v $(pwd)/data/dbdata:/app/dbdata \
   -v $(pwd)/data/logs:/app/logs \
   --restart unless-stopped \
-  iamlzy/xianyuassistant:latest
+  abu116/xianyu-help:latest
 ```
 
 **Windows PowerShell**:
@@ -123,7 +123,7 @@ docker run -d `
   -v ${PWD}/data/dbdata:/app/dbdata `
   -v ${PWD}/data/logs:/app/logs `
   --restart unless-stopped `
-  iamlzy/xianyuassistant:latest
+  abu116/xianyu-help:latest
 ```
 
 #### 自定义配置
@@ -138,7 +138,7 @@ docker run -d \
   -v /your/path/dbdata:/app/dbdata \
   -v /your/path/logs:/app/logs \
   --restart unless-stopped \
-  iamlzy/xianyuassistant:latest
+  abu116/xianyu-help:latest
 ```
 
 **配置项说明**:
@@ -177,7 +177,7 @@ docker logs -f xianyu-assistant
 docker restart xianyu-assistant
 
 # 更新到最新版本
-docker pull iamlzy/xianyuassistant:latest
+docker pull abu116/xianyu-help:latest
 docker stop xianyu-assistant
 docker rm xianyu-assistant
 # 然后重新执行 docker run 命令

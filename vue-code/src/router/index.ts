@@ -11,6 +11,12 @@ const router = createRouter({
       meta: { title: '登录', public: true }
     },
     {
+      path: '/deploy',
+      name: 'deploy',
+      component: () => import('@/views/deploy/index.vue'),
+      meta: { title: '部署指南', public: true }
+    },
+    {
       path: '/',
       redirect: '/dashboard'
     },

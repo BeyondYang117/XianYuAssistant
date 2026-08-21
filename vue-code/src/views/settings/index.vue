@@ -1376,19 +1376,9 @@ function handleBackupMenuEnter() {
       <div v-if="activeMenu === 'about'" class="settings__panel">
         <div class="settings__panel-title">关于</div>
 
-        <!-- 交流群 -->
         <div class="settings__section">
-          <div class="settings__section-title">交流群</div>
-          <p class="settings__desc">扫描下方二维码添加好友邀请您加入微信交流群</p>
-          <div class="settings__qrcode-wrapper">
-            <img src="/fjm/wx.png" alt="微信交流群二维码" class="settings__qrcode" />
-          </div>
-        </div>
-
-        <!-- 更新教程 -->
-        <div class="settings__section">
-          <div class="settings__section-title">更新教程</div>
-          <p class="settings__desc">按照以下步骤更新到最新版本：</p>
+          <div class="settings__section-title">部署与更新</div>
+          <p class="settings__desc">需要分享给其他用户时，可直接打开公开部署页：<a href="/deploy" target="_blank" class="settings__link">/deploy</a></p>
 
           <div class="settings__tutorial">
             <div class="settings__tutorial-step">
@@ -1416,7 +1406,7 @@ function handleBackupMenuEnter() {
               <div class="settings__step-content">
                 <div class="settings__step-title">拉取最新镜像</div>
                 <div class="settings__code-block">
-                  <code>docker pull iamlzy/xianyuassistant:latest</code>
+                  <code>docker pull abu116/xianyu-help:latest</code>
                 </div>
               </div>
             </div>
@@ -1432,7 +1422,7 @@ function handleBackupMenuEnter() {
   -v $(pwd)/data/dbdata:/app/dbdata \
   -v $(pwd)/data/logs:/app/logs \
   --restart unless-stopped \
-  iamlzy/xianyuassistant:latest</code></pre>
+  abu116/xianyu-help:latest</code></pre>
                 </div>
                 <p class="settings__step-tip">💡 提示：数据目录路径保持不变，数据会自动迁移</p>
               </div>
@@ -1454,8 +1444,8 @@ function handleBackupMenuEnter() {
 
         <!-- 开源地址 -->
         <div class="settings__section">
-          <div class="settings__section-title">开源地址</div>
-          <p class="settings__desc">本项目已开源，欢迎 Star 支持</p>
+          <div class="settings__section-title">项目资源</div>
+          <p class="settings__desc">源码、发行说明和一键部署脚本都在项目仓库中维护。</p>
           <div class="settings__github-link">
             <a href="https://github.com/BeyondYang117/XianYuAssistant" target="_blank" class="settings__link">
               https://github.com/BeyondYang117/XianYuAssistant

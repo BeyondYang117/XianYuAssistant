@@ -12,12 +12,12 @@ watch(() => route.path, () => {
   if (!isReady.value) isReady.value = true
 }, { immediate: true })
 
-const isLoginPage = computed(() => route.path === '/login')
+const isPublicPage = computed(() => route.meta.public === true)
 </script>
 
 <template>
   <template v-if="isReady">
-    <LoginLayout v-if="isLoginPage" />
+    <LoginLayout v-if="isPublicPage" />
     <AppLayout v-else />
   </template>
 </template>
