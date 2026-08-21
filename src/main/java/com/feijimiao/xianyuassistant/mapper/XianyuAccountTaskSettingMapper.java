@@ -30,6 +30,12 @@ public interface XianyuAccountTaskSettingMapper extends BaseMapper<XianyuAccount
     List<XianyuAccountTaskSetting> selectRateEnabled();
 
     /**
+     * 查询所有开启了超时求评价的账号配置
+     */
+    @Select("SELECT * FROM xianyu_account_task_setting WHERE review_request_on = 1")
+    List<XianyuAccountTaskSetting> selectReviewRequestEnabled();
+
+    /**
      * 保存或更新擦亮配置；账号维度只有一行，冲突时覆盖开关与时间点
      */
     @Insert("INSERT INTO xianyu_account_task_setting " +
@@ -76,6 +82,28 @@ public interface XianyuAccountTaskSettingMapper extends BaseMapper<XianyuAccount
     @Update("UPDATE xianyu_account_task_setting SET last_rate_scan_at = #{scanAt}, " +
             "updated_time = datetime('now', 'localtime') WHERE xianyu_account_id = #{accountId}")
     int markRateScan(@Param("accountId") Long accountId, @Param("scanAt") long scanAt);
+
+    /**
+     * 保存或更新超时求评价配置
+     */
+    @Insert("INSERT INTO xianyu_account_task_setting " +
+            "(xianyu_account_id, review_request_on, review_request_content, review_request_delay_hours, " +
+            "review_request_interval_hours, review_request_max_attempts, created_time, updated_time) " +
+            "VALUES (#{accountId}, #{reviewRequestOn}, #{content}, #{delayHours}, " +
+            "#{intervalHours}, #{maxAttempts}, datetime('now', 'localtime'), datetime('now', 'localtime')) " +
+            "ON CONFLICT(xianyu_account_id) DO UPDATE SET " +
+            "review_request_on = excluded.review_request_on, " +
+            "review_request_content = excluded.review_request_content, " +
+            "review_request_delay_hours = excluded.review_request_delay_hours, " +
+            "review_request_interval_hours = excluded.review_request_interval_hours, " +
+            "review_request_max_attempts = excluded.review_request_max_attempts, " +
+            "updated_time = datetime('now', 'localtime')")
+    int upsertReviewRequestConfig(@Param("accountId") Long accountId,
+                                  @Param("reviewRequestOn") Integer reviewRequestOn,
+                                  @Param("content") String content,
+                                  @Param("delayHours") Integer delayHours,
+                                  @Param("intervalHours") Integer intervalHours,
+                                  @Param("maxAttempts") Integer maxAttempts);
 
     @Delete("DELETE FROM xianyu_account_task_setting WHERE xianyu_account_id = #{accountId}")
     int deleteByAccountId(@Param("accountId") Long accountId);

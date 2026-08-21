@@ -8,6 +8,7 @@ import com.feijimiao.xianyuassistant.mapper.XianyuAccountTaskSettingMapper;
 import com.feijimiao.xianyuassistant.service.AutoPolishService;
 import com.feijimiao.xianyuassistant.service.AutoRateService;
 import com.feijimiao.xianyuassistant.service.BuyerRateService;
+import com.feijimiao.xianyuassistant.service.ReviewRequestService;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,9 @@ public class AccountTaskController {
     @Autowired
     private AutoRateService autoRateService;
 
+    @Autowired
+    private ReviewRequestService reviewRequestService;
+
     /**
      * 擦亮配置请求
      */
@@ -68,6 +72,31 @@ public class AccountTaskController {
     }
 
     /**
+     * 超时求评价配置请求
+     */
+    @Data
+    public static class ReviewRequestConfigReqDTO {
+        private Long xianyuAccountId;
+        private Integer reviewRequestOn;
+        /**
+         * 求评价话术
+         */
+        private String reviewRequestContent;
+        /**
+         * 发货后多少小时首次求评价
+         */
+        private Integer reviewRequestDelayHours;
+        /**
+         * 再次求评价的间隔小时数
+         */
+        private Integer reviewRequestIntervalHours;
+        /**
+         * 最多求评价次数
+         */
+        private Integer reviewRequestMaxAttempts;
+    }
+
+    /**
      * 查询账号自动任务配置（擦亮 + 好评同在一行）
      */
     @GetMapping("/config")
@@ -85,6 +114,11 @@ public class AccountTaskController {
                 setting.setAutoRateOn(0);
                 setting.setRateContent(BuyerRateService.DEFAULT_RATE_CONTENT);
                 setting.setLastRateScanAt(0L);
+                setting.setReviewRequestOn(0);
+                setting.setReviewRequestContent(ReviewRequestService.DEFAULT_CONTENT);
+                setting.setReviewRequestDelayHours(ReviewRequestService.DEFAULT_DELAY_HOURS);
+                setting.setReviewRequestIntervalHours(ReviewRequestService.DEFAULT_INTERVAL_HOURS);
+                setting.setReviewRequestMaxAttempts(ReviewRequestService.DEFAULT_MAX_ATTEMPTS);
             }
             return ResultObject.success(setting);
         } catch (Exception e) {
@@ -206,6 +240,69 @@ public class AccountTaskController {
         } catch (Exception e) {
             log.error("查询好评记录失败: accountId={}", xianyuAccountId, e);
             return ResultObject.failed("查询好评记录失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 保存账号超时求评价配置
+     */
+    @PostMapping("/review-request/config")
+    public ResultObject<?> saveReviewRequestConfig(@RequestBody ReviewRequestConfigReqDTO reqDTO) {
+        if (reqDTO.getXianyuAccountId() == null) {
+            return ResultObject.validateFailed("缺少账号ID");
+        }
+
+        String content = reqDTO.getReviewRequestContent() == null ? "" : reqDTO.getReviewRequestContent().trim();
+        if (content.isEmpty()) {
+            content = ReviewRequestService.DEFAULT_CONTENT;
+        }
+        if (content.length() > 500) {
+            return ResultObject.validateFailed("求评价话术不能超过500字");
+        }
+
+        // 时间参数必须为正：0 或负数会让首次提醒立即触发，可能对历史订单批量发消息
+        Integer delayHours = reqDTO.getReviewRequestDelayHours();
+        if (delayHours != null && (delayHours <= 0 || delayHours > 8760)) {
+            return ResultObject.validateFailed("首次求评价延迟需在 1 到 8760 小时之间");
+        }
+        Integer intervalHours = reqDTO.getReviewRequestIntervalHours();
+        if (intervalHours != null && (intervalHours <= 0 || intervalHours > 8760)) {
+            return ResultObject.validateFailed("求评价间隔需在 1 到 8760 小时之间");
+        }
+        Integer maxAttempts = reqDTO.getReviewRequestMaxAttempts();
+        if (maxAttempts != null && (maxAttempts <= 0 || maxAttempts > 10)) {
+            return ResultObject.validateFailed("求评价次数需在 1 到 10 之间");
+        }
+
+        try {
+            int reviewRequestOn = Integer.valueOf(1).equals(reqDTO.getReviewRequestOn()) ? 1 : 0;
+            settingMapper.upsertReviewRequestConfig(
+                    reqDTO.getXianyuAccountId(),
+                    reviewRequestOn,
+                    content,
+                    delayHours == null ? ReviewRequestService.DEFAULT_DELAY_HOURS : delayHours,
+                    intervalHours == null ? ReviewRequestService.DEFAULT_INTERVAL_HOURS : intervalHours,
+                    maxAttempts == null ? ReviewRequestService.DEFAULT_MAX_ATTEMPTS : maxAttempts);
+            log.info("保存求评价配置: accountId={}, on={}", reqDTO.getXianyuAccountId(), reviewRequestOn);
+            return ResultObject.success(null, "保存成功");
+        } catch (Exception e) {
+            log.error("保存求评价配置失败: accountId={}", reqDTO.getXianyuAccountId(), e);
+            return ResultObject.failed("保存求评价配置失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 立即执行该账号的超时求评价
+     * 未到期订单不会发送，已达上限的订单会被跳过
+     */
+    @PostMapping("/review-request/run")
+    public ResultObject<ReviewRequestService.ReviewRequestSummary> reviewRequestNow(@RequestParam Long xianyuAccountId) {
+        try {
+            ReviewRequestService.ReviewRequestSummary summary = reviewRequestService.runNow(xianyuAccountId);
+            return ResultObject.success(summary, summary.message());
+        } catch (Exception e) {
+            log.error("手动求评价失败: accountId={}", xianyuAccountId, e);
+            return ResultObject.failed("手动求评价失败: " + e.getMessage());
         }
     }
 

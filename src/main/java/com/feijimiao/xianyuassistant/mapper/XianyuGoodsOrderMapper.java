@@ -211,4 +211,60 @@ public interface XianyuGoodsOrderMapper {
 
     @Select("SELECT COALESCE(SUM(CAST(total_price AS REAL)), 0) FROM xianyu_goods_order WHERE state = 1 AND confirm_state = 1 AND date(create_time) >= #{startDate} AND date(create_time) <= #{endDate}")
     double sumDeliverySuccessAmountByDateRange(@Param("startDate") String startDate, @Param("endDate") String endDate);
+
+    /**
+     * 查询候选的求评价订单：已发货成功、有会话与买家、且未达到最大求评价次数。
+     * 是否真正到期由业务层按发货时间与间隔判断——发货时间是文本且格式可能不一致，
+     * 放在 SQL 里比较会因格式差异静默漏单。
+     * 使用 id 游标分页，避免一次性把所有历史订单装入内存。
+     */
+    @Select("SELECT * FROM xianyu_goods_order " +
+            "WHERE xianyu_account_id = #{accountId} AND state = 1 " +
+            "AND COALESCE(review_request_count, 0) < #{maxAttempts} " +
+            "AND sid IS NOT NULL AND sid <> '' " +
+            "AND buyer_user_id IS NOT NULL AND buyer_user_id <> '' " +
+            "AND id > #{afterId} " +
+            "ORDER BY id ASC LIMIT #{limit}")
+    @Results({
+        @Result(property = "id", column = "id"),
+        @Result(property = "xianyuAccountId", column = "xianyu_account_id"),
+        @Result(property = "xianyuGoodsId", column = "xianyu_goods_id"),
+        @Result(property = "xyGoodsId", column = "xy_goods_id"),
+        @Result(property = "pnmId", column = "pnm_id"),
+        @Result(property = "orderId", column = "order_id"),
+        @Result(property = "buyerUserId", column = "buyer_user_id"),
+        @Result(property = "buyerUserName", column = "buyer_user_name"),
+        @Result(property = "sid", column = "sid"),
+        @Result(property = "content", column = "content"),
+        @Result(property = "state", column = "state"),
+        @Result(property = "failReason", column = "fail_reason"),
+        @Result(property = "confirmState", column = "confirm_state"),
+        @Result(property = "createTime", column = "create_time"),
+        @Result(property = "goodsTitle", column = "goods_title"),
+        @Result(property = "skuName", column = "sku_name"),
+        @Result(property = "orderCreateTime", column = "order_create_time"),
+        @Result(property = "paySuccessTime", column = "pay_success_time"),
+        @Result(property = "consignTime", column = "consign_time"),
+        @Result(property = "totalPrice", column = "total_price"),
+        @Result(property = "buyNum", column = "buy_num"),
+        @Result(property = "deliveryWay", column = "delivery_way"),
+        @Result(property = "reviewRequestCount", column = "review_request_count"),
+        @Result(property = "lastReviewRequestAt", column = "last_review_request_at")
+    })
+    List<XianyuGoodsOrder> selectReviewRequestCandidates(@Param("accountId") Long accountId,
+                                                         @Param("maxAttempts") int maxAttempts,
+                                                         @Param("afterId") long afterId,
+                                                         @Param("limit") int limit);
+
+    /**
+     * 记录一次求评价发送。
+     * 条件里带上当前已知次数，形成乐观锁：并发或重复扫描时只有一方能写成功，
+     * 返回 0 表示该订单已被其他执行路径处理，不能重复发送。
+     */
+    @Update("UPDATE xianyu_goods_order " +
+            "SET review_request_count = COALESCE(review_request_count, 0) + 1, last_review_request_at = #{sentAt} " +
+            "WHERE id = #{id} AND COALESCE(review_request_count, 0) = #{expectedCount}")
+    int markReviewRequested(@Param("id") Long id,
+                            @Param("expectedCount") int expectedCount,
+                            @Param("sentAt") long sentAt);
 }

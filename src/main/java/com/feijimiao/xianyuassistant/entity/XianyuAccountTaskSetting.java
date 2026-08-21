@@ -54,6 +54,31 @@ public class XianyuAccountTaskSetting {
      */
     private Long lastRateScanAt;
 
+    /**
+     * 是否开启超时求评价 0:关闭 1:开启
+     */
+    private Integer reviewRequestOn;
+
+    /**
+     * 求评价话术
+     */
+    private String reviewRequestContent;
+
+    /**
+     * 发货后多少小时首次求评价
+     */
+    private Integer reviewRequestDelayHours;
+
+    /**
+     * 再次求评价的间隔小时数
+     */
+    private Integer reviewRequestIntervalHours;
+
+    /**
+     * 最多求评价次数
+     */
+    private Integer reviewRequestMaxAttempts;
+
     private String createdTime;
 
     private String updatedTime;

@@ -16,6 +16,16 @@ export interface AccountTaskConfig {
   rateContent: string
   /** 最近一次待评价扫描时间戳 */
   lastRateScanAt?: number
+  /** 超时求评价开关 0:关闭 1:开启 */
+  reviewRequestOn: number
+  /** 求评价话术 */
+  reviewRequestContent: string
+  /** 发货后多少小时首次求评价 */
+  reviewRequestDelayHours: number
+  /** 再次求评价的间隔小时数 */
+  reviewRequestIntervalHours: number
+  /** 最多求评价次数 */
+  reviewRequestMaxAttempts: number
 }
 
 /** 擦亮执行汇总 */
@@ -31,6 +41,15 @@ export interface PolishSummary {
 export interface RateSummary {
   found: number
   success: number
+  failed: number
+  skipped: number
+  message: string
+}
+
+/** 求评价发送汇总 */
+export interface ReviewRequestSummary {
+  candidates: number
+  sent: number
   failed: number
   skipped: number
   message: string
@@ -119,5 +138,30 @@ export function getRateRuns(xianyuAccountId: number, limit = 50) {
     url: '/account-tasks/rate/runs',
     method: 'GET',
     params: { xianyuAccountId, limit }
+  })
+}
+
+// 保存超时求评价配置
+export function saveReviewRequestConfig(data: {
+  xianyuAccountId: number
+  reviewRequestOn: number
+  reviewRequestContent: string
+  reviewRequestDelayHours: number
+  reviewRequestIntervalHours: number
+  reviewRequestMaxAttempts: number
+}) {
+  return request({
+    url: '/account-tasks/review-request/config',
+    method: 'POST',
+    data
+  })
+}
+
+// 立即执行超时求评价
+export function runReviewRequestNow(xianyuAccountId: number) {
+  return request<ReviewRequestSummary>({
+    url: '/account-tasks/review-request/run',
+    method: 'POST',
+    params: { xianyuAccountId }
   })
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import {
   getAccountTaskConfig,
   savePolishConfig,
@@ -7,7 +7,9 @@ import {
   getPolishRuns,
   saveRateConfig,
   runRateNow,
-  getRateRuns
+  getRateRuns,
+  saveReviewRequestConfig,
+  runReviewRequestNow
 } from '@/api/account-task'
 import type { AccountTaskRun } from '@/api/account-task'
 import { showSuccess, showError } from '@/utils'
@@ -25,7 +27,7 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-type TaskTab = 'polish' | 'rate'
+type TaskTab = 'polish' | 'rate' | 'review'
 
 const activeTab = ref<TaskTab>('polish')
 const loading = ref(false)
@@ -38,10 +40,23 @@ const form = ref({
   autoPolishOn: false,
   polishTime: '03:00',
   autoRateOn: false,
-  rateContent: ''
+  rateContent: '',
+  reviewRequestOn: false,
+  reviewRequestContent: '',
+  reviewRequestDelayHours: 72,
+  reviewRequestIntervalHours: 24,
+  reviewRequestMaxAttempts: 1
 })
 const lastPolishDate = ref('')
 const lastRateScanAt = ref(0)
+
+const runNowLabel = computed(() => {
+  switch (activeTab.value) {
+    case 'polish': return '立即擦亮'
+    case 'rate': return '立即评价'
+    default: return '立即提醒'
+  }
+})
 
 // 打开弹窗时按当前账号拉取配置；切换账号要重置，避免展示上一个账号的数据
 watch(() => [props.modelValue, props.account?.id], async () => {
@@ -59,6 +74,11 @@ watch(() => [props.modelValue, props.account?.id], async () => {
       form.value.polishTime = data?.polishTime || '03:00'
       form.value.autoRateOn = data?.autoRateOn === 1
       form.value.rateContent = data?.rateContent || ''
+      form.value.reviewRequestOn = data?.reviewRequestOn === 1
+      form.value.reviewRequestContent = data?.reviewRequestContent || ''
+      form.value.reviewRequestDelayHours = data?.reviewRequestDelayHours || 72
+      form.value.reviewRequestIntervalHours = data?.reviewRequestIntervalHours || 24
+      form.value.reviewRequestMaxAttempts = data?.reviewRequestMaxAttempts || 1
       lastPolishDate.value = data?.lastPolishDate || ''
       lastRateScanAt.value = data?.lastRateScanAt || 0
     } else {
@@ -99,11 +119,33 @@ const handleSave = async () => {
         autoPolishOn: form.value.autoPolishOn ? 1 : 0,
         polishTime: form.value.polishTime
       })
-    } else {
+    } else if (activeTab.value === 'rate') {
       response = await saveRateConfig({
         xianyuAccountId: props.account.id,
         autoRateOn: form.value.autoRateOn ? 1 : 0,
         rateContent: form.value.rateContent
+      })
+    } else {
+      // 三个小时/次数参数在后端也会校验，这里先拦一次给出即时反馈
+      if (!(form.value.reviewRequestDelayHours >= 1 && form.value.reviewRequestDelayHours <= 8760)) {
+        showError('首次提醒延迟需在 1 到 8760 小时之间')
+        return
+      }
+      if (!(form.value.reviewRequestIntervalHours >= 1 && form.value.reviewRequestIntervalHours <= 8760)) {
+        showError('提醒间隔需在 1 到 8760 小时之间')
+        return
+      }
+      if (!(form.value.reviewRequestMaxAttempts >= 1 && form.value.reviewRequestMaxAttempts <= 10)) {
+        showError('提醒次数需在 1 到 10 之间')
+        return
+      }
+      response = await saveReviewRequestConfig({
+        xianyuAccountId: props.account.id,
+        reviewRequestOn: form.value.reviewRequestOn ? 1 : 0,
+        reviewRequestContent: form.value.reviewRequestContent,
+        reviewRequestDelayHours: form.value.reviewRequestDelayHours,
+        reviewRequestIntervalHours: form.value.reviewRequestIntervalHours,
+        reviewRequestMaxAttempts: form.value.reviewRequestMaxAttempts
       })
     }
 
@@ -129,11 +171,16 @@ const handleRunNow = async () => {
   try {
     const response = activeTab.value === 'polish'
       ? await runPolishNow(props.account.id)
-      : await runRateNow(props.account.id)
+      : activeTab.value === 'rate'
+        ? await runRateNow(props.account.id)
+        : await runReviewRequestNow(props.account.id)
 
     if (response.code === 0 || response.code === 200) {
       showSuccess(response.data?.message || '任务已执行')
-      await loadRuns()
+      // 求评价的状态记在订单行上，没有独立执行记录可查
+      if (activeTab.value !== 'review') {
+        await loadRuns()
+      }
     } else {
       throw new Error(response.msg || '执行失败')
     }
@@ -147,7 +194,7 @@ const handleRunNow = async () => {
 }
 
 const loadRuns = async () => {
-  if (!props.account) return
+  if (!props.account || activeTab.value === 'review') return
   try {
     const response = activeTab.value === 'polish'
       ? await getPolishRuns(props.account.id, 50)
@@ -199,6 +246,11 @@ const formatTs = (ts: number) => {
             :class="{ 'tabs__item--active': activeTab === 'rate' }"
             @click="activeTab = 'rate'"
           >自动好评</button>
+          <button
+            class="tabs__item"
+            :class="{ 'tabs__item--active': activeTab === 'review' }"
+            @click="activeTab = 'review'"
+          >求评价</button>
         </div>
 
         <div class="modal-body">
@@ -235,7 +287,7 @@ const formatTs = (ts: number) => {
           </template>
 
           <!-- 自动好评 -->
-          <template v-else>
+          <template v-else-if="activeTab === 'rate'">
             <div class="field field--row">
               <span class="field__label">开启自动好评买家</span>
               <button
@@ -268,11 +320,79 @@ const formatTs = (ts: number) => {
             </div>
           </template>
 
+          <!-- 超时求评价 -->
+          <template v-else>
+            <div class="field field--row">
+              <span class="field__label">开启超时求评价</span>
+              <button
+                class="toggle"
+                :class="{ 'toggle--on': form.reviewRequestOn }"
+                :disabled="loading"
+                @click="form.reviewRequestOn = !form.reviewRequestOn"
+              >
+                <span class="toggle__track"><span class="toggle__thumb"></span></span>
+              </button>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="review-content">提醒话术</label>
+              <textarea
+                id="review-content"
+                v-model="form.reviewRequestContent"
+                class="field__textarea"
+                rows="3"
+                maxlength="500"
+                placeholder="亲，如果对宝贝还满意的话，麻烦帮忙点个好评哦，感谢支持～"
+                :disabled="loading"
+              ></textarea>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="review-delay">发货后多少小时首次提醒</label>
+              <input
+                id="review-delay"
+                v-model.number="form.reviewRequestDelayHours"
+                type="number"
+                min="1"
+                max="8760"
+                class="field__input"
+                :disabled="loading"
+              />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="review-interval">再次提醒间隔（小时）</label>
+              <input
+                id="review-interval"
+                v-model.number="form.reviewRequestIntervalHours"
+                type="number"
+                min="1"
+                max="8760"
+                class="field__input"
+                :disabled="loading"
+              />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="review-attempts">最多提醒次数</label>
+              <input
+                id="review-attempts"
+                v-model.number="form.reviewRequestMaxAttempts"
+                type="number"
+                min="1"
+                max="10"
+                class="field__input"
+                :disabled="loading"
+              />
+              <p class="field__hint">发货成功的订单在到期后通过聊天提醒买家评价，需账号在线</p>
+            </div>
+          </template>
+
           <div class="field field--actions">
             <button class="link-btn" :disabled="running" @click="handleRunNow">
-              {{ running ? '执行中…' : (activeTab === 'polish' ? '立即擦亮' : '立即评价') }}
+              {{ running ? '执行中…' : runNowLabel }}
             </button>
-            <button class="link-btn" @click="loadRuns">查看执行记录</button>
+            <button class="link-btn" v-if="activeTab !== 'review'" @click="loadRuns">查看执行记录</button>
           </div>
 
           <div class="runs" v-if="showRuns">

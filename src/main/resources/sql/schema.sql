@@ -249,6 +249,8 @@ CREATE TABLE IF NOT EXISTS xianyu_goods_order (
     total_price VARCHAR(20),                         -- 订单金额
     buy_num INTEGER,                                 -- 购买数量
     delivery_way TINYINT DEFAULT 0,                  -- 发货方式: 0-自动发货, 1-人工提取卡密后手工发货
+    review_request_count INTEGER DEFAULT 0,          -- 已发送求评价次数
+    last_review_request_at BIGINT DEFAULT 0,         -- 最近一次求评价发送时间戳（毫秒）
     FOREIGN KEY (xianyu_account_id) REFERENCES xianyu_account(id)
 );
 
@@ -560,6 +562,11 @@ CREATE TABLE IF NOT EXISTS xianyu_account_task_setting (
     auto_rate_on TINYINT NOT NULL DEFAULT 0,        -- 是否开启自动好评买家
     rate_content VARCHAR(500) NOT NULL DEFAULT '不错的买家，交易愉快', -- 好评内容
     last_rate_scan_at BIGINT NOT NULL DEFAULT 0,    -- 最近一次待评价扫描时间戳（毫秒）
+    review_request_on TINYINT NOT NULL DEFAULT 0,   -- 是否开启超时求评价
+    review_request_content VARCHAR(500) NOT NULL DEFAULT '亲，如果对宝贝还满意的话，麻烦帮忙点个好评哦，感谢支持～', -- 求评价话术
+    review_request_delay_hours INTEGER NOT NULL DEFAULT 72,  -- 发货后多少小时首次求评价
+    review_request_interval_hours INTEGER NOT NULL DEFAULT 24, -- 再次求评价的间隔小时数
+    review_request_max_attempts INTEGER NOT NULL DEFAULT 1,   -- 最多求评价次数
     created_time DATETIME DEFAULT (datetime('now', 'localtime')),
     updated_time DATETIME DEFAULT (datetime('now', 'localtime'))
 );
@@ -584,3 +591,7 @@ ON xianyu_account_task_run(run_key);
 
 CREATE INDEX IF NOT EXISTS idx_account_task_run_account_type
 ON xianyu_account_task_run(xianyu_account_id, task_type, started_at DESC);
+
+-- 求评价扫描按"已发货且未评价过"筛选，避免全表扫订单
+CREATE INDEX IF NOT EXISTS idx_goods_order_review_request
+ON xianyu_goods_order(xianyu_account_id, state, review_request_count);

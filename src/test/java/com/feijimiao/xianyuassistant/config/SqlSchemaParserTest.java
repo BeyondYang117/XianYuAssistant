@@ -32,12 +32,28 @@ class SqlSchemaParserTest {
         assertTrue(hasColumn(setting, "auto_rate_on"));
         assertTrue(hasColumn(setting, "rate_content"));
         assertTrue(hasColumn(setting, "last_rate_scan_at"));
+        assertTrue(hasColumn(setting, "review_request_on"));
+        assertTrue(hasColumn(setting, "review_request_content"));
+        assertTrue(hasColumn(setting, "review_request_delay_hours"));
+        assertTrue(hasColumn(setting, "review_request_interval_hours"));
+        assertTrue(hasColumn(setting, "review_request_max_attempts"));
 
         SqlSchemaParser.TableDefinition run = schema.getTables().get("xianyu_account_task_run");
         assertNotNull(run, "未解析到 xianyu_account_task_run 表");
         assertTrue(hasColumn(run, "run_key"));
         assertTrue(hasColumn(run, "task_type"));
         assertTrue(hasColumn(run, "status"));
+    }
+
+    @Test
+    void parsesOrderReviewRequestColumns() {
+        SqlSchemaParser.SchemaDefinition schema = new SqlSchemaParser().parseSchemaFile("sql/schema.sql");
+
+        SqlSchemaParser.TableDefinition order = schema.getTables().get("xianyu_goods_order");
+        assertNotNull(order, "未解析到 xianyu_goods_order 表");
+        // 求评价次数是幂等依据，老库要靠 ALTER TABLE 补上这两列
+        assertTrue(hasColumn(order, "review_request_count"));
+        assertTrue(hasColumn(order, "last_review_request_at"));
     }
 
     @Test
