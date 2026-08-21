@@ -56,10 +56,12 @@ public interface XianyuAccountTaskRunMapper extends BaseMapper<XianyuAccountTask
                                             @Param("limit") int limit);
 
     /**
-     * 清理指定时间之前的历史记录，避免擦亮记录无限增长
+     * 清理指定类型的历史记录，避免执行记录无限增长。
+     * 只能用于 run_key 含日期的任务（如擦亮）：这类 key 每天都不同，删除旧记录不会破坏幂等。
+     * 好评的 run_key 不含日期，是永久幂等依据，删除会导致老订单被重复评价，因此必须按 task_type 精确限定。
      */
-    @Delete("DELETE FROM xianyu_account_task_run WHERE started_at < #{before}")
-    int deleteBefore(@Param("before") long before);
+    @Delete("DELETE FROM xianyu_account_task_run WHERE task_type = #{taskType} AND started_at < #{before}")
+    int deleteByTypeBefore(@Param("taskType") String taskType, @Param("before") long before);
 
     @Delete("DELETE FROM xianyu_account_task_run WHERE xianyu_account_id = #{accountId}")
     int deleteByAccountId(@Param("accountId") Long accountId);

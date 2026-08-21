@@ -1,15 +1,21 @@
 import { request } from '@/utils/request'
 
-/** 账号擦亮配置 */
-export interface PolishConfig {
+/** 账号自动任务配置（擦亮 + 好评同在一行） */
+export interface AccountTaskConfig {
   xianyuAccountId: number
-  /** 0:关闭 1:开启 */
+  /** 擦亮开关 0:关闭 1:开启 */
   autoPolishOn: number
   /** 擦亮时刻，北京时间 HH:mm */
   polishTime: string
   /** 最近成功擦亮日期 yyyy-MM-dd */
   lastPolishDate?: string
   lastPolishAt?: number
+  /** 好评开关 0:关闭 1:开启 */
+  autoRateOn: number
+  /** 好评内容 */
+  rateContent: string
+  /** 最近一次待评价扫描时间戳 */
+  lastRateScanAt?: number
 }
 
 /** 擦亮执行汇总 */
@@ -21,7 +27,16 @@ export interface PolishSummary {
   message: string
 }
 
-/** 擦亮执行记录 */
+/** 好评执行汇总 */
+export interface RateSummary {
+  found: number
+  success: number
+  failed: number
+  skipped: number
+  message: string
+}
+
+/** 任务执行记录 */
 export interface AccountTaskRun {
   id: number
   runKey: string
@@ -36,16 +51,16 @@ export interface AccountTaskRun {
   finishedAt: number
 }
 
-// 查询账号擦亮配置
-export function getPolishConfig(xianyuAccountId: number) {
-  return request<PolishConfig>({
-    url: '/account-tasks/polish/config',
+// 查询账号自动任务配置
+export function getAccountTaskConfig(xianyuAccountId: number) {
+  return request<AccountTaskConfig>({
+    url: '/account-tasks/config',
     method: 'GET',
     params: { xianyuAccountId }
   })
 }
 
-// 保存账号擦亮配置
+// 保存擦亮配置
 export function savePolishConfig(data: {
   xianyuAccountId: number
   autoPolishOn: number
@@ -71,6 +86,37 @@ export function runPolishNow(xianyuAccountId: number) {
 export function getPolishRuns(xianyuAccountId: number, limit = 50) {
   return request<AccountTaskRun[]>({
     url: '/account-tasks/polish/runs',
+    method: 'GET',
+    params: { xianyuAccountId, limit }
+  })
+}
+
+// 保存好评配置
+export function saveRateConfig(data: {
+  xianyuAccountId: number
+  autoRateOn: number
+  rateContent: string
+}) {
+  return request({
+    url: '/account-tasks/rate/config',
+    method: 'POST',
+    data
+  })
+}
+
+// 立即评价该账号全部待评价订单
+export function runRateNow(xianyuAccountId: number) {
+  return request<RateSummary>({
+    url: '/account-tasks/rate/run',
+    method: 'POST',
+    params: { xianyuAccountId }
+  })
+}
+
+// 查询好评执行记录
+export function getRateRuns(xianyuAccountId: number, limit = 50) {
+  return request<AccountTaskRun[]>({
+    url: '/account-tasks/rate/runs',
     method: 'GET',
     params: { xianyuAccountId, limit }
   })

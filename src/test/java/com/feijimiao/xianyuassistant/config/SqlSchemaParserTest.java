@@ -29,6 +29,9 @@ class SqlSchemaParserTest {
         assertTrue(hasColumn(setting, "polish_time"));
         assertTrue(hasColumn(setting, "last_polish_date"));
         assertTrue(hasColumn(setting, "last_polish_at"));
+        assertTrue(hasColumn(setting, "auto_rate_on"));
+        assertTrue(hasColumn(setting, "rate_content"));
+        assertTrue(hasColumn(setting, "last_rate_scan_at"));
 
         SqlSchemaParser.TableDefinition run = schema.getTables().get("xianyu_account_task_run");
         assertNotNull(run, "未解析到 xianyu_account_task_run 表");

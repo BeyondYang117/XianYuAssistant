@@ -12,7 +12,7 @@ export function useAccountManager() {
     manualAdd: false,
     qrLogin: false,
     deleteConfirm: false,
-    polish: false
+    tasks: false
   })
   
   const currentAccount = ref<Account | null>(null)
@@ -68,10 +68,10 @@ export function useAccountManager() {
     dialogs.deleteConfirm = true;
   };
 
-  // 打开擦亮配置
-  const configPolish = (account: Account) => {
+  // 打开自动任务配置（擦亮 / 好评）
+  const configTasks = (account: Account) => {
     currentAccount.value = account;
-    dialogs.polish = true;
+    dialogs.tasks = true;
   };
 
   // 确认删除账号
@@ -107,7 +107,7 @@ export function useAccountManager() {
     showQRLoginDialog,
     editAccount,
     deleteAccount,
-    configPolish,
+    configTasks,
     confirmDelete
   }
 }

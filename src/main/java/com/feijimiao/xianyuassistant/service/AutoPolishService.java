@@ -107,18 +107,20 @@ public class AutoPolishService {
     }
 
     /**
-     * 每天清理一次过期执行记录
+     * 每天清理一次过期擦亮记录。
+     * 只清 auto_polish：它的 run_key 含日期，删旧记录不影响当日幂等。
+     * 好评记录的 run_key 是永久幂等依据，绝不能一起删。
      */
     @Scheduled(fixedDelay = 24 * 60 * 60 * 1000L, initialDelay = 10 * 60 * 1000L)
     public void cleanupRuns() {
         try {
             long before = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(RUN_RETENTION_DAYS);
-            int deleted = runMapper.deleteBefore(before);
+            int deleted = runMapper.deleteByTypeBefore(TASK_TYPE, before);
             if (deleted > 0) {
-                log.info("清理账号任务执行记录: {} 条", deleted);
+                log.info("清理擦亮执行记录: {} 条", deleted);
             }
         } catch (Exception e) {
-            log.error("清理账号任务执行记录失败", e);
+            log.error("清理擦亮执行记录失败", e);
         }
     }
 

@@ -557,6 +557,9 @@ CREATE TABLE IF NOT EXISTS xianyu_account_task_setting (
     polish_time VARCHAR(5) NOT NULL DEFAULT '03:00',-- 擦亮触发时刻（北京时间 HH:mm）
     last_polish_date VARCHAR(10) NOT NULL DEFAULT '', -- 最近成功擦亮的日期（yyyy-MM-dd），当日幂等依据
     last_polish_at BIGINT NOT NULL DEFAULT 0,       -- 最近一次擦亮执行时间戳（毫秒）
+    auto_rate_on TINYINT NOT NULL DEFAULT 0,        -- 是否开启自动好评买家
+    rate_content VARCHAR(500) NOT NULL DEFAULT '不错的买家，交易愉快', -- 好评内容
+    last_rate_scan_at BIGINT NOT NULL DEFAULT 0,    -- 最近一次待评价扫描时间戳（毫秒）
     created_time DATETIME DEFAULT (datetime('now', 'localtime')),
     updated_time DATETIME DEFAULT (datetime('now', 'localtime'))
 );
@@ -564,7 +567,7 @@ CREATE TABLE IF NOT EXISTS xianyu_account_task_setting (
 -- 账号自动任务执行记录：run_key 唯一约束提供跨重启的幂等抢占
 CREATE TABLE IF NOT EXISTS xianyu_account_task_run (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_key VARCHAR(300) NOT NULL,                  -- 形如 polish:{accountId}:{itemId}:{yyyy-MM-dd}
+    run_key VARCHAR(300) NOT NULL,                  -- 擦亮 auto_polish:{accountId}:{itemId}:{yyyy-MM-dd}；好评 auto_rate:{accountId}:{tradeId}（不含日期，永久幂等）
     xianyu_account_id BIGINT NOT NULL,
     task_type VARCHAR(40) NOT NULL,                 -- auto_polish / auto_rate
     target_id VARCHAR(100) NOT NULL DEFAULT '',     -- 商品ID或订单ID

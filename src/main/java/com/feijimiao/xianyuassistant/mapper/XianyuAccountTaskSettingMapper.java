@@ -24,6 +24,12 @@ public interface XianyuAccountTaskSettingMapper extends BaseMapper<XianyuAccount
     List<XianyuAccountTaskSetting> selectPolishEnabled();
 
     /**
+     * 查询所有开启了自动好评的账号配置
+     */
+    @Select("SELECT * FROM xianyu_account_task_setting WHERE auto_rate_on = 1")
+    List<XianyuAccountTaskSetting> selectRateEnabled();
+
+    /**
      * 保存或更新擦亮配置；账号维度只有一行，冲突时覆盖开关与时间点
      */
     @Insert("INSERT INTO xianyu_account_task_setting " +
@@ -48,6 +54,28 @@ public interface XianyuAccountTaskSettingMapper extends BaseMapper<XianyuAccount
     int markPolishDone(@Param("accountId") Long accountId,
                        @Param("polishDate") String polishDate,
                        @Param("polishAt") long polishAt);
+
+    /**
+     * 保存或更新自动好评配置
+     */
+    @Insert("INSERT INTO xianyu_account_task_setting " +
+            "(xianyu_account_id, auto_rate_on, rate_content, created_time, updated_time) " +
+            "VALUES (#{accountId}, #{autoRateOn}, #{rateContent}, " +
+            "datetime('now', 'localtime'), datetime('now', 'localtime')) " +
+            "ON CONFLICT(xianyu_account_id) DO UPDATE SET " +
+            "auto_rate_on = excluded.auto_rate_on, " +
+            "rate_content = excluded.rate_content, " +
+            "updated_time = datetime('now', 'localtime')")
+    int upsertRateConfig(@Param("accountId") Long accountId,
+                         @Param("autoRateOn") Integer autoRateOn,
+                         @Param("rateContent") String rateContent);
+
+    /**
+     * 记录待评价扫描时间，供界面展示任务活跃度
+     */
+    @Update("UPDATE xianyu_account_task_setting SET last_rate_scan_at = #{scanAt}, " +
+            "updated_time = datetime('now', 'localtime') WHERE xianyu_account_id = #{accountId}")
+    int markRateScan(@Param("accountId") Long accountId, @Param("scanAt") long scanAt);
 
     @Delete("DELETE FROM xianyu_account_task_setting WHERE xianyu_account_id = #{accountId}")
     int deleteByAccountId(@Param("accountId") Long accountId);

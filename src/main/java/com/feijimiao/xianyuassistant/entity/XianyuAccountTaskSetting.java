@@ -39,6 +39,21 @@ public class XianyuAccountTaskSetting {
      */
     private Long lastPolishAt;
 
+    /**
+     * 是否开启自动好评买家 0:关闭 1:开启
+     */
+    private Integer autoRateOn;
+
+    /**
+     * 好评内容
+     */
+    private String rateContent;
+
+    /**
+     * 最近一次待评价扫描时间戳（毫秒）
+     */
+    private Long lastRateScanAt;
+
     private String createdTime;
 
     private String updatedTime;

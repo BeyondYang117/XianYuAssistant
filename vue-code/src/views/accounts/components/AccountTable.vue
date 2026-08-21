@@ -19,7 +19,7 @@ interface Props {
 interface Emits {
   (e: 'edit', account: Account): void
   (e: 'delete', id: number): void
-  (e: 'polish', account: Account): void
+  (e: 'tasks', account: Account): void
 }
 
 defineProps<Props>()
@@ -110,9 +110,9 @@ const getStatusBg = (status: number) => {
           <IconEdit />
           <span>编辑</span>
         </button>
-        <button class="account-card__btn account-card__btn--polish" @click="emit('polish', account)">
+        <button class="account-card__btn account-card__btn--polish" @click="emit('tasks', account)">
           <IconSparkle />
-          <span>擦亮</span>
+          <span>任务</span>
         </button>
         <button class="account-card__btn account-card__btn--delete" @click="emit('delete', account.id)">
           <IconTrash />
@@ -165,9 +165,9 @@ const getStatusBg = (status: number) => {
               <IconEdit />
               <span>编辑</span>
             </button>
-            <button class="table__action table__action--polish" @click="emit('polish', account)">
+            <button class="table__action table__action--polish" @click="emit('tasks', account)">
               <IconSparkle />
-              <span>擦亮</span>
+              <span>任务</span>
             </button>
             <button class="table__action table__action--delete" @click="emit('delete', account.id)">
               <IconTrash />

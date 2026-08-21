@@ -5,7 +5,7 @@ import AddAccountDialog from './components/AddAccountDialog.vue'
 import ManualAddDialog from './components/ManualAddDialog.vue'
 import QRLoginDialog from './components/QRLoginDialog.vue'
 import DeleteConfirmDialog from './components/DeleteConfirmDialog.vue'
-import PolishConfigDialog from './components/PolishConfigDialog.vue'
+import AccountTaskDialog from './components/AccountTaskDialog.vue'
 
 import IconQrCode from '@/components/icons/IconQrCode.vue'
 import IconPlus from '@/components/icons/IconPlus.vue'
@@ -23,7 +23,7 @@ const {
   showQRLoginDialog,
   editAccount,
   deleteAccount,
-  configPolish
+  configTasks
 } = useAccountManager();
 
 loadAccounts();
@@ -65,7 +65,7 @@ loadAccounts();
           :loading="loading"
           @edit="editAccount"
           @delete="deleteAccount"
-          @polish="configPolish"
+          @tasks="configTasks"
         />
       </div>
     </section>
@@ -95,8 +95,8 @@ loadAccounts();
       :account-id="deleteAccountId"
       @success="loadAccounts"
     />
-    <PolishConfigDialog
-      v-model="dialogs.polish"
+    <AccountTaskDialog
+      v-model="dialogs.tasks"
       :account="currentAccount"
     />
   </div>
