@@ -62,13 +62,13 @@ public class WebSocketConfig {
      * 凭证刷新最小间隔（分钟）
      * 用于Cookie保活和_m_h5_tk兜底刷新
      */
-    private int credentialRefreshMinMinutes = 45;
+    private int credentialRefreshMinMinutes = 15;
 
     /**
      * 凭证刷新最大间隔（分钟）
      * 用于Cookie保活和_m_h5_tk兜底刷新
      */
-    private int credentialRefreshMaxMinutes = 60;
+    private int credentialRefreshMaxMinutes = 20;
     
     /**
      * 消息过期时间（毫秒）

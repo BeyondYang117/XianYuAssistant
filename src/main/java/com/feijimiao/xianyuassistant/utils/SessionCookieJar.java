@@ -124,9 +124,16 @@ public class SessionCookieJar implements CookieJar {
      */
     @Override
     public synchronized void saveFromResponse(HttpUrl url, List<Cookie> cookies) {
+        long now = System.currentTimeMillis();
         for (Cookie cookie : cookies) {
             if (cookie.name() != null && !cookie.name().isEmpty()) {
-                cookieMap.put(cookie.name(), cookie.value());
+                // Max-Age=0 / 过期 Set-Cookie 是删除指令。保留空值会导致后续
+                // 请求继续携带一个已被服务端撤销的凭证。
+                if (cookie.value().isEmpty() || cookie.expiresAt() <= now) {
+                    cookieMap.remove(cookie.name());
+                } else {
+                    cookieMap.put(cookie.name(), cookie.value());
+                }
             }
         }
     }

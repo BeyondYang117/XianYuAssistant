@@ -167,6 +167,25 @@ public class WebSocketServiceImpl implements WebSocketService {
                 throw new com.feijimiao.xianyuassistant.exception.TokenInvalidException("无法获取WebSocket Token，请检查Cookie是否有效");
             }
             log.info("accessToken获取成功: accountId={}, token长度={}", accountId, accessToken.length());
+
+            // 获取Token的过程中可能收到Set-Cookie并更新数据库。握手必须使用
+            // Token请求之后的最新Cookie，避免“Token已刷新但WebSocket仍带旧Cookie”。
+            String latestCookieStr = accountService.getCookieByAccountId(accountId);
+            if (latestCookieStr != null && !latestCookieStr.isBlank()
+                    && !latestCookieStr.equals(cookieStr)) {
+                cookieStr = latestCookieStr;
+                cookies = XianyuSignUtils.parseCookies(cookieStr);
+                String latestUnb = cookies.get("unb");
+                if (latestUnb == null || latestUnb.isEmpty()) {
+                    throw new com.feijimiao.xianyuassistant.exception.CookieExpiredException(
+                            "刷新Token后Cookie缺少unb字段，Cookie可能已过期或无效");
+                }
+                if (!latestUnb.equals(unb)) {
+                    unb = latestUnb;
+                    deviceId = accountService.getOrGenerateDeviceId(accountId, unb);
+                }
+                log.info("账号{}握手前已重新加载最新Cookie，长度={}", accountId, cookieStr.length());
+            }
             
             // 调用通用连接方法
             return connectWebSocket(accountId, cookieStr, deviceId, accessToken, unb);

@@ -80,7 +80,9 @@ public class TokenRefreshServiceImpl implements TokenRefreshService {
 
     @PostConstruct
     public void initRefreshSchedules() {
-        scheduleNextCookieKeepAlive();
+        // 首次定时检查在应用启动约1分钟后执行，尽快修复历史误标状态；
+        // 后续周期再使用15-20分钟随机间隔。
+        nextCookieKeepAliveTime = 0;
     }
 
     private long randomRefreshDelayMinutes() {
@@ -222,14 +224,7 @@ public class TokenRefreshServiceImpl implements TokenRefreshService {
         
         // 如果已经尝试过hasLogin，不再重试，直接返回失败
         if (hasLoginAttempted) {
-            log.error("【账号{}】已尝试过hasLogin刷新但仍失败，Cookie可能已彻底过期", accountId);
-            
-            // 更新Cookie状态为过期
-            cookieMapper.update(null,
-                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<XianyuCookie>()
-                            .eq(XianyuCookie::getXianyuAccountId, accountId)
-                            .set(XianyuCookie::getCookieStatus, 2)
-            );
+            log.error("【账号{}】hasLogin有效但仍无法刷新_m_h5_tk，保留Cookie登录状态", accountId);
             
             // 记录操作日志
             operationLogService.log(accountId,
@@ -239,7 +234,7 @@ public class TokenRefreshServiceImpl implements TokenRefreshService {
                 com.feijimiao.xianyuassistant.constants.OperationConstants.Status.FAIL,
                 com.feijimiao.xianyuassistant.constants.OperationConstants.TargetType.TOKEN,
                 String.valueOf(accountId),
-                null, null, "hasLogin后仍无法获取Token", null);
+                null, null, "hasLogin后仍无法获取Token，未判定Cookie过期", null);
             
             return false;
         }
@@ -259,14 +254,7 @@ public class TokenRefreshServiceImpl implements TokenRefreshService {
      */
     private boolean refreshMh5tkViaHasLogin(Long accountId, int hasLoginRetryCount) {
         if (hasLoginRetryCount >= 2) {
-            log.error("【账号{}】hasLogin刷新重试次数已达上限，Cookie已彻底过期", accountId);
-            
-            // 更新Cookie状态为过期
-            cookieMapper.update(null,
-                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<XianyuCookie>()
-                            .eq(XianyuCookie::getXianyuAccountId, accountId)
-                            .set(XianyuCookie::getCookieStatus, 2)
-            );
+            log.error("【账号{}】Token刷新流程中的hasLogin重试已达上限，交由Cookie刷新服务进一步判定", accountId);
             
             // 记录操作日志
             operationLogService.log(accountId,
@@ -276,7 +264,7 @@ public class TokenRefreshServiceImpl implements TokenRefreshService {
                 com.feijimiao.xianyuassistant.constants.OperationConstants.Status.FAIL,
                 com.feijimiao.xianyuassistant.constants.OperationConstants.TargetType.TOKEN,
                 String.valueOf(accountId),
-                null, null, "Cookie过期且自动刷新失败", null);
+                null, null, "hasLogin检查失败，未直接判定Cookie过期", null);
             
             return false;
         }
@@ -414,14 +402,18 @@ public class TokenRefreshServiceImpl implements TokenRefreshService {
             int failCount = 0;
 
             for (XianyuAccount account : accounts) {
-                if (account.getStatus() == 1) {
+                // -2 是Cookie刷新失败后的“异常待处理”。仍需纳入保活检查，
+                // 否则瞬态故障留下的历史异常状态永远没有自动恢复机会。
+                if (Integer.valueOf(1).equals(account.getStatus())
+                        || Integer.valueOf(-2).equals(account.getStatus())) {
                     try {
-                        // 第1步：通过hasLogin保持Cookie活跃
-                        boolean loginOk = cookieRefreshService.checkLoginStatus(account.getId());
-                        
+                        // 统一交给Cookie刷新服务分类处理：只有明确的登录失效才会
+                        // 启动浏览器兜底，网络瞬态故障不会把账号标记为异常。
+                        boolean loginOk = cookieRefreshService.refreshCookie(account.getId());
+
                         if (loginOk) {
                             keepAliveSuccessCount++;
-                            log.debug("【账号{}】hasLogin保活成功", account.getId());
+                            log.debug("【账号{}】Cookie保活成功", account.getId());
                             operationLogService.log(account.getId(),
                                     com.feijimiao.xianyuassistant.constants.OperationConstants.Type.UPDATE,
                                     com.feijimiao.xianyuassistant.constants.OperationConstants.Module.COOKIE,
@@ -441,20 +433,10 @@ public class TokenRefreshServiceImpl implements TokenRefreshService {
                                 log.warn("【账号{}】⚠️ Cookie保活成功但Token刷新失败", account.getId());
                             }
                         } else {
-                            // 第3步兜底：hasLogin失败，触发浏览器刷新Cookie
-                            log.warn("【账号{}】hasLogin保活失败，开始触发浏览器兜底刷新Cookie...", account.getId());
-                            boolean browserRefreshOk = cookieRefreshService.refreshCookie(account.getId());
-                            if (browserRefreshOk) {
-                                keepAliveSuccessCount++;
-                                // 浏览器刷新成功后，也尝试刷新Token
-                                boolean tokenOk = refreshMh5tkToken(account.getId());
-                                if (tokenOk) {
-                                    tokenRefreshSuccessCount++;
-                                }
-                                log.info("【账号{}】浏览器兜底刷新Cookie成功", account.getId());
-                            } else {
-                                failCount++;
-                                log.error("【账号{}】hasLogin和浏览器兜底刷新均失败，Cookie已过期，需手动更新", account.getId());
+                            failCount++;
+                            log.warn("【账号{}】Cookie保活未成功，本周期跳过Token刷新", account.getId());
+                            XianyuAccount latestAccount = accountMapper.selectById(account.getId());
+                            if (latestAccount != null && Integer.valueOf(-2).equals(latestAccount.getStatus())) {
                                 triggerCookieExpireNotify(account.getId());
                             }
                         }

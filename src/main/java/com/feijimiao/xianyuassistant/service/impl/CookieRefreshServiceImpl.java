@@ -63,8 +63,21 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
 
     private final Map<Long, Object> refreshLocks = new ConcurrentHashMap<>();
 
-    private static final long BROWSER_REFRESH_COOLDOWN_MS = 30 * 60 * 1000L;
-    private final Map<Long, Long> lastBrowserRefreshTime = new ConcurrentHashMap<>();
+    private static final long BROWSER_REFRESH_SUCCESS_COOLDOWN_MS = 30 * 60 * 1000L;
+    private static final long BROWSER_REFRESH_FAILURE_COOLDOWN_MS = 5 * 60 * 1000L;
+    private final Map<Long, Long> browserRefreshCooldownUntil = new ConcurrentHashMap<>();
+
+    private enum LoginCheckOutcome {
+        VALID,
+        INVALID,
+        TRANSIENT_FAILURE
+    }
+
+    private enum BrowserRefreshOutcome {
+        SUCCESS,
+        FAILED,
+        COOLDOWN
+    }
 
     public CookieRefreshServiceImpl() {
     }
@@ -79,14 +92,14 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
     @Override
     public boolean checkLoginStatus(Long accountId) {
         synchronized (getRefreshLock(accountId)) {
-            return doCheckLoginStatus(accountId, true); // 记录操作日志
+            return doCheckLoginStatus(accountId, true) == LoginCheckOutcome.VALID; // 记录操作日志
         }
     }
 
     @Override
     public boolean checkLoginStatusQuietly(Long accountId) {
         synchronized (getRefreshLock(accountId)) {
-            return doCheckLoginStatus(accountId, false); // 不记录操作日志
+            return doCheckLoginStatus(accountId, false) == LoginCheckOutcome.VALID; // 不记录操作日志
         }
     }
 
@@ -103,8 +116,8 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
      * @param accountId 账号ID
      * @param logOperation 是否记录操作日志（true=主动保活，false=被动检查）
      */
-    private boolean doCheckLoginStatus(Long accountId, boolean logOperation) {
-        return doCheckLoginStatusWithRetry(accountId, 0, logOperation);
+    private LoginCheckOutcome doCheckLoginStatus(Long accountId, boolean logOperation) {
+        return doCheckLoginStatusWithRetry(accountId, 0, logOperation, LoginCheckOutcome.TRANSIENT_FAILURE);
     }
 
     /**
@@ -115,10 +128,12 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
      * @param retryCount 重试次数
      * @param logOperation 是否记录操作日志
      */
-    private boolean doCheckLoginStatusWithRetry(Long accountId, int retryCount, boolean logOperation) {
+    private LoginCheckOutcome doCheckLoginStatusWithRetry(Long accountId, int retryCount,
+                                                           boolean logOperation,
+                                                           LoginCheckOutcome lastFailure) {
         if (retryCount >= 2) {
             log.error("【账号{}】Login检查失败，重试次数过多", accountId);
-            return false;
+            return lastFailure;
         }
 
         try {
@@ -134,7 +149,7 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
 
             if (cookie == null || cookie.getCookieText() == null) {
                 log.warn("【账号{}】未找到Cookie", accountId);
-                return false;
+                return LoginCheckOutcome.INVALID;
             }
 
             String oldCookieStr = cookie.getCookieText();
@@ -175,11 +190,17 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
             OkHttpClient httpClient = cookieJar.createHttpClient();
 
             try (Response response = httpClient.newCall(request).execute()) {
+                // CookieJar 在响应头到达时已经吸收 Set-Cookie。即使 HTTP 状态失败，
+                // 这些轮换/删除也必须先落库，供下一次重试使用。
+                String responseCookieStr = cookieJar.getCookieString();
+                persistCookieRotation(accountId, oldCookieStr, responseCookieStr);
+
                 if (!response.isSuccessful()) {
                     log.warn("【账号{}】检查登录状态失败: HTTP {}, 准备重试... (重试次数: {}/2)", 
                             accountId, response.code(), retryCount + 1);
                     Thread.sleep(500);
-                    return doCheckLoginStatusWithRetry(accountId, retryCount + 1, logOperation);
+                    return doCheckLoginStatusWithRetry(accountId, retryCount + 1, logOperation,
+                            LoginCheckOutcome.TRANSIENT_FAILURE);
                 }
 
                 String responseBody = response.body().string();
@@ -291,7 +312,7 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
                                 null, null, null, null);
                     }
 
-                    return true;
+                    return LoginCheckOutcome.VALID;
                 } else {
                     log.warn("【账号{}】⚠️ 登录状态无效，准备重试... (重试次数: {}/2)", accountId, retryCount + 1);
 
@@ -308,10 +329,13 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
                     }
 
                     Thread.sleep(500);
-                    return doCheckLoginStatusWithRetry(accountId, retryCount + 1, logOperation);
+                    return doCheckLoginStatusWithRetry(accountId, retryCount + 1, logOperation,
+                            LoginCheckOutcome.INVALID);
                 }
             }
 
+        } catch (com.feijimiao.xianyuassistant.exception.CaptchaRequiredException e) {
+            throw e;
         } catch (Exception e) {
             log.error("【账号{}】检查登录状态异常，准备重试... (重试次数: {}/2)", accountId, retryCount + 1, e);
 
@@ -332,7 +356,8 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
             }
-            return doCheckLoginStatusWithRetry(accountId, retryCount + 1, logOperation);
+            return doCheckLoginStatusWithRetry(accountId, retryCount + 1, logOperation,
+                    LoginCheckOutcome.TRANSIENT_FAILURE);
         }
     }
 
@@ -343,8 +368,9 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
                 log.info("【账号{}】开始刷新Cookie...", accountId);
 
                 // 通过hasLogin接口刷新Cookie
-                boolean success = doCheckLoginStatus(accountId, true); // 主动刷新，记录日志
-                if (!success) {
+                LoginCheckOutcome loginOutcome = doCheckLoginStatus(accountId, true); // 主动刷新，记录日志
+                boolean success = loginOutcome == LoginCheckOutcome.VALID;
+                if (loginOutcome == LoginCheckOutcome.INVALID) {
                     log.warn("【账号{}】hasLogin刷新失败，开始触发浏览器兜底刷新Cookie", accountId);
                     operationLogService.log(accountId,
                             OperationConstants.Type.REFRESH,
@@ -354,7 +380,30 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
                             OperationConstants.TargetType.COOKIE,
                             String.valueOf(accountId),
                             null, null, null, null);
-                    success = refreshCookieWithBrowser(accountId);
+                    BrowserRefreshOutcome browserOutcome = refreshCookieWithBrowser(accountId);
+                    if (browserOutcome == BrowserRefreshOutcome.COOLDOWN) {
+                        operationLogService.log(accountId,
+                                OperationConstants.Type.REFRESH,
+                                OperationConstants.Module.COOKIE,
+                                "浏览器Cookie刷新处于冷却期，将稍后重试",
+                                OperationConstants.Status.PARTIAL,
+                                OperationConstants.TargetType.COOKIE,
+                                String.valueOf(accountId),
+                                null, null, null, null);
+                        return false;
+                    }
+                    success = browserOutcome == BrowserRefreshOutcome.SUCCESS;
+                } else if (loginOutcome == LoginCheckOutcome.TRANSIENT_FAILURE) {
+                    log.warn("【账号{}】hasLogin因网络或响应解析异常暂时失败，跳过浏览器兜底和账号异常标记", accountId);
+                    operationLogService.log(accountId,
+                            OperationConstants.Type.REFRESH,
+                            OperationConstants.Module.COOKIE,
+                            "Cookie检查暂时失败，将在下个周期重试",
+                            OperationConstants.Status.PARTIAL,
+                            OperationConstants.TargetType.COOKIE,
+                            String.valueOf(accountId),
+                            null, null, "网络或响应解析异常", null);
+                    return false;
                 }
 
                 if (success) {
@@ -387,6 +436,8 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
 
                 return success;
 
+            } catch (com.feijimiao.xianyuassistant.exception.CaptchaRequiredException e) {
+                throw e;
             } catch (Exception e) {
                 log.error("【账号{}】刷新Cookie失败", accountId, e);
                 markAccountAsCookieRefreshAbnormal(accountId, "刷新Cookie异常: " + e.getMessage());
@@ -406,13 +457,17 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
         }
     }
 
-    private boolean refreshCookieWithBrowser(Long accountId) {
-        Long lastTime = lastBrowserRefreshTime.get(accountId);
-        if (lastTime != null && (System.currentTimeMillis() - lastTime) < BROWSER_REFRESH_COOLDOWN_MS) {
-            long remainingMinutes = (BROWSER_REFRESH_COOLDOWN_MS - (System.currentTimeMillis() - lastTime)) / 60000;
+    private BrowserRefreshOutcome refreshCookieWithBrowser(Long accountId) {
+        long now = System.currentTimeMillis();
+        Long cooldownUntil = browserRefreshCooldownUntil.get(accountId);
+        if (cooldownUntil != null && now < cooldownUntil) {
+            long remainingMinutes = Math.max(1, (cooldownUntil - now + 59999) / 60000);
             log.warn("【账号{}】浏览器兜底刷新冷却中，剩余{}分钟，跳过本次", accountId, remainingMinutes);
-            return false;
+            return BrowserRefreshOutcome.COOLDOWN;
         }
+
+        // 先施加短冷却，防止并发入口或连续重连重复拉起浏览器；成功后延长。
+        browserRefreshCooldownUntil.put(accountId, now + BROWSER_REFRESH_FAILURE_COOLDOWN_MS);
 
         XianyuCookie cookie = cookieMapper.selectOne(
                 new LambdaQueryWrapper<XianyuCookie>()
@@ -431,7 +486,7 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
                     OperationConstants.TargetType.COOKIE,
                     String.valueOf(accountId),
                     null, null, "未找到可用Cookie", null);
-            return false;
+            return BrowserRefreshOutcome.FAILED;
         }
 
         Map<String, String> existingCookies = XianyuSignUtils.parseCookies(cookie.getCookieText());
@@ -446,7 +501,7 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
                     OperationConstants.TargetType.COOKIE,
                     String.valueOf(accountId),
                     null, null, "Cookie内容为空", null);
-            return false;
+            return BrowserRefreshOutcome.FAILED;
         }
 
         operationLogService.log(accountId,
@@ -457,8 +512,6 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
                 OperationConstants.TargetType.COOKIE,
                 String.valueOf(accountId),
                 null, null, null, null);
-
-        lastBrowserRefreshTime.put(accountId, System.currentTimeMillis());
 
         try (BrowserContext context = playwrightManager.createContext()) {
             List<Cookie> browserCookies = buildBrowserCookies(existingCookies);
@@ -488,7 +541,7 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
                         OperationConstants.TargetType.COOKIE,
                         String.valueOf(accountId),
                         null, null, "浏览器未返回Cookie", null);
-                return false;
+                return BrowserRefreshOutcome.FAILED;
             }
 
             Map<String, String> refreshedCookieMap = XianyuSignUtils.parseCookies(refreshedCookieText);
@@ -502,6 +555,11 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
                             .set(newMh5Tk != null && !newMh5Tk.isBlank(), XianyuCookie::getMH5Tk, newMh5Tk)
             );
 
+            // 仅在浏览器确实拿到新凭证后启动冷却。失败尝试不应把账号锁在
+            // 30 分钟冷却窗口内，否则真实过期后无法及时恢复。
+            browserRefreshCooldownUntil.put(accountId,
+                    System.currentTimeMillis() + BROWSER_REFRESH_SUCCESS_COOLDOWN_MS);
+
             log.info("【账号{}】浏览器兜底刷新Cookie成功，Cookie长度: {}", accountId, refreshedCookieText.length());
             operationLogService.log(accountId,
                     OperationConstants.Type.REFRESH,
@@ -511,7 +569,7 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
                     OperationConstants.TargetType.COOKIE,
                     String.valueOf(accountId),
                     null, null, null, null);
-            return true;
+            return BrowserRefreshOutcome.SUCCESS;
         } catch (Exception e) {
             log.error("【账号{}】浏览器兜底刷新Cookie失败", accountId, e);
             markAccountAsCookieRefreshAbnormal(accountId, "浏览器兜底刷新异常: " + e.getMessage());
@@ -523,7 +581,33 @@ public class CookieRefreshServiceImpl implements CookieRefreshService {
                     OperationConstants.TargetType.COOKIE,
                     String.valueOf(accountId),
                     null, null, e.getMessage(), null);
-            return false;
+            return BrowserRefreshOutcome.FAILED;
+        }
+    }
+
+    /** 持久化响应 Set-Cookie 产生的轮换，但不改变登录状态判定。 */
+    private void persistCookieRotation(Long accountId, String oldCookieStr, String newCookieStr) {
+        if (Objects.equals(oldCookieStr, newCookieStr) || newCookieStr == null) {
+            return;
+        }
+        try {
+            Map<String, String> oldCookieMap = XianyuSignUtils.parseCookies(oldCookieStr);
+            Map<String, String> newCookieMap = XianyuSignUtils.parseCookies(newCookieStr);
+            String oldMh5tk = oldCookieMap.get("_m_h5_tk");
+            String newMh5tk = newCookieMap.get("_m_h5_tk");
+            String updatedTime = java.time.LocalDateTime.now().format(
+                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"));
+            cookieMapper.update(null,
+                    new LambdaUpdateWrapper<XianyuCookie>()
+                            .eq(XianyuCookie::getXianyuAccountId, accountId)
+                            .set(XianyuCookie::getCookieText, newCookieStr)
+                            .set(XianyuCookie::getUpdatedTime, updatedTime)
+                            .set(!Objects.equals(oldMh5tk, newMh5tk),
+                                    XianyuCookie::getMH5Tk, newMh5tk)
+            );
+            log.info("【账号{}】已在解析响应前持久化Set-Cookie轮换", accountId);
+        } catch (Exception e) {
+            log.warn("【账号{}】持久化Set-Cookie轮换失败，不影响本次登录状态解析", accountId, e);
         }
     }
 

@@ -2,7 +2,6 @@ package com.feijimiao.xianyuassistant.websocket;
 
 import com.feijimiao.xianyuassistant.service.WebSocketService;
 import com.feijimiao.xianyuassistant.websocket.handler.*;
-import com.feijimiao.xianyuassistant.service.AccountService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -30,9 +29,6 @@ public class WebSocketMessageRouter {
     // 自动注入所有处理器
     @Autowired(required = false)
     private List<AbstractLwpHandler> handlers;
-
-    @Autowired
-    private AccountService accountService;
 
     @Lazy
     @Autowired
@@ -181,11 +177,12 @@ public class WebSocketMessageRouter {
                 
                 log.debug("【账号{}】收到成功响应(200)", accountId);
             } else if (codeValue == 401) {
-                log.error("【账号{}】Token失效(401)，需要重新获取Token", accountId);
-                updateCookieStatusIfPresent(accountId, 2);
+                // 401 表示当前 WebSocket accessToken 失效。客户端会触发 Token
+                // 刷新和重连，不能据此把仍可用于 HTTP 登录的 Cookie 标记为过期。
+                log.error("【账号{}】WebSocket Token失效(401)，等待自动刷新Token并重连", accountId);
             } else if (codeValue == 500) {
-                log.error("【账号{}】服务器错误(500)", accountId);
-                updateCookieStatusIfPresent(accountId, 2);
+                // 服务端瞬态错误与认证状态无关，保留现有 Cookie 状态。
+                log.error("【账号{}】WebSocket服务器错误(500)", accountId);
             } else {
                 log.warn("【账号{}】未知响应码: {}", accountId, code);
             }
@@ -211,15 +208,6 @@ public class WebSocketMessageRouter {
         }
     }
 
-    private void updateCookieStatusIfPresent(String accountId, int status) {
-        try {
-            Long id = Long.parseLong(accountId);
-            accountService.updateCookieStatus(id, status);
-        } catch (NumberFormatException e) {
-            log.warn("无法解析accountId: {}", accountId);
-        }
-    }
-    
     /**
      * 移除处理器
      */
