@@ -46,8 +46,10 @@ const handlePreviewKeydown = (event: KeyboardEvent) => { if (event.key === 'Esca
 const scrollBottom = () => nextTick(() => { if (listRef.value) listRef.value.scrollTop = listRef.value.scrollHeight })
 const fetchMessages = async (append = false, silent = false) => {
   if (!props.conversation?.sid) return
+  const wasNearBottom = !listRef.value || listRef.value.scrollHeight - listRef.value.scrollTop - listRef.value.clientHeight < 48
   if (append) loadingMore.value = true
   else if (!silent) { loading.value = true; messages.value = []; hasMore.value = true }
+  let hasIncoming = false
   try {
     const offset = append ? messages.value.length : 0
     const response = await getContextMessages({ sid: props.conversation.sid, limit: 30, offset })
@@ -56,13 +58,16 @@ const fetchMessages = async (append = false, silent = false) => {
     else if (silent) {
       const known = new Set(messages.value.map(item => item.id))
       const incoming = list.reverse().filter(item => !known.has(item.id))
-      if (incoming.length) messages.value = [...messages.value, ...incoming]
+      hasIncoming = incoming.length > 0
+      if (hasIncoming) messages.value = [...messages.value, ...incoming]
     } else messages.value = list.reverse()
     hasMore.value = list.length >= 30
-    if (!append && !silent) scrollBottom()
-    if (silent && list.length && list[list.length - 1]?.id !== messages.value[messages.value.length - 1]?.id) scrollBottom()
   } catch (error) { console.error('加载会话消息失败', error) }
-  finally { loading.value = false; loadingMore.value = false }
+  finally {
+    loading.value = false
+    loadingMore.value = false
+    if ((!append && !silent) || (silent && hasIncoming && wasNearBottom)) scrollBottom()
+  }
 }
 const refresh = () => fetchMessages(false, true)
 const handleScroll = () => { if (listRef.value?.scrollTop !== undefined && listRef.value.scrollTop < 48 && hasMore.value && !loadingMore.value) fetchMessages(true) }
