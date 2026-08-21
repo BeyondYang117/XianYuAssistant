@@ -2,7 +2,8 @@ server:
   port: 12400
 
 app:
-  version: 1.1.8
+  # 由 Maven 资源过滤注入 pom.xml 的 <version>，版本号只在 pom.xml 维护
+  version: '@project.version@'
 
 # AI功能开关（默认开启，API Key从数据库xianyu_sys_setting表读取，未配置时AI功能自动降级）
 ai:

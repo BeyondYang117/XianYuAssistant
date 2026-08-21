@@ -1457,8 +1457,8 @@ function handleBackupMenuEnter() {
           <div class="settings__section-title">开源地址</div>
           <p class="settings__desc">本项目已开源，欢迎 Star 支持</p>
           <div class="settings__github-link">
-            <a href="https://github.com/IAMLZY2018/XianYuAssistant" target="_blank" class="settings__link">
-              https://github.com/IAMLZY2018/XianYuAssistant
+            <a href="https://github.com/BeyondYang117/XianYuAssistant" target="_blank" class="settings__link">
+              https://github.com/BeyondYang117/XianYuAssistant
             </a>
           </div>
         </div>
