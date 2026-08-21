@@ -1,5 +1,7 @@
 package com.feijimiao.xianyuassistant.service.impl;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.feijimiao.xianyuassistant.common.ResultObject;
 import com.feijimiao.xianyuassistant.entity.XianyuAccount;
 import com.feijimiao.xianyuassistant.entity.XianyuChatMessage;
@@ -15,7 +17,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 聊天消息服务实现
@@ -26,6 +30,9 @@ import java.util.List;
 @Slf4j
 @Service
 public class ChatMessageServiceImpl implements ChatMessageService {
+
+    private static final String IMAGE_PREFIX = "[图片]";
+    private final ObjectMapper objectMapper = new ObjectMapper();
     
     @Autowired
     private XianyuChatMessageMapper chatMessageMapper;
@@ -88,17 +95,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             List<MsgDTO> msgDTOList = new ArrayList<>();
             if (messages != null) {
                 for (XianyuChatMessage message : messages) {
-                    MsgDTO msgDTO = new MsgDTO();
-                    msgDTO.setId(message.getId());
-                    msgDTO.setSId(message.getSId());
-                    msgDTO.setContentType(message.getContentType());
-                    msgDTO.setMsgContent(message.getMsgContent());
-                    msgDTO.setXyGoodsId(message.getXyGoodsId());
-                    msgDTO.setReminderUrl(message.getReminderUrl());
-                    msgDTO.setSenderUserName(message.getSenderUserName());
-                    msgDTO.setSenderUserId(message.getSenderUserId());
-                    msgDTO.setMessageTime(message.getMessageTime());
-                    msgDTOList.add(msgDTO);
+                    msgDTOList.add(toMsgDTO(message));
                 }
             }
             
@@ -140,17 +137,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             List<MsgDTO> msgDTOList = new ArrayList<>();
             if (messages != null) {
                 for (XianyuChatMessage message : messages) {
-                    MsgDTO msgDTO = new MsgDTO();
-                    msgDTO.setId(message.getId());
-                    msgDTO.setSId(message.getSId());
-                    msgDTO.setContentType(message.getContentType());
-                    msgDTO.setMsgContent(message.getMsgContent());
-                    msgDTO.setXyGoodsId(message.getXyGoodsId());
-                    msgDTO.setReminderUrl(message.getReminderUrl());
-                    msgDTO.setSenderUserName(message.getSenderUserName());
-                    msgDTO.setSenderUserId(message.getSenderUserId());
-                    msgDTO.setMessageTime(message.getMessageTime());
-                    msgDTOList.add(msgDTO);
+                    msgDTOList.add(toMsgDTO(message));
                 }
             }
             
@@ -159,6 +146,75 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         } catch (Exception e) {
             log.error("查询上下文消息失败: sid={}", reqDTO.getSid(), e);
             return ResultObject.failed("查询上下文消息失败: " + e.getMessage());
+        }
+    }
+
+    private MsgDTO toMsgDTO(XianyuChatMessage message) {
+        MsgDTO msgDTO = new MsgDTO();
+        msgDTO.setId(message.getId());
+        msgDTO.setSId(message.getSId());
+        msgDTO.setContentType(message.getContentType());
+        msgDTO.setMsgContent(message.getMsgContent());
+        msgDTO.setImageUrls(extractImageUrls(message));
+        msgDTO.setXyGoodsId(message.getXyGoodsId());
+        msgDTO.setReminderUrl(message.getReminderUrl());
+        msgDTO.setSenderUserName(message.getSenderUserName());
+        msgDTO.setSenderUserId(message.getSenderUserId());
+        msgDTO.setMessageTime(message.getMessageTime());
+        return msgDTO;
+    }
+
+    List<String> extractImageUrls(XianyuChatMessage message) {
+        Set<String> imageUrls = new LinkedHashSet<>();
+        String content = message.getMsgContent();
+        if (content != null && content.startsWith(IMAGE_PREFIX)) {
+            addImageUrl(imageUrls, content.substring(IMAGE_PREFIX.length()).trim());
+        }
+
+        if (message.getContentType() != null && message.getContentType() == 2
+                && message.getCompleteMsg() != null && !message.getCompleteMsg().isBlank()) {
+            try {
+                collectImageUrls(objectMapper.readTree(message.getCompleteMsg()), imageUrls);
+            } catch (Exception e) {
+                log.debug("解析图片消息地址失败: messageId={}", message.getId(), e);
+            }
+        }
+        return new ArrayList<>(imageUrls);
+    }
+
+    private void collectImageUrls(JsonNode node, Set<String> imageUrls) {
+        if (node == null) return;
+
+        if (node.isObject()) {
+            if (node.path("contentType").asInt(-1) == 2) {
+                JsonNode pics = node.path("image").path("pics");
+                if (pics.isArray()) {
+                    for (JsonNode pic : pics) {
+                        // Incoming payloads have used both url and originalUrl.
+                        addImageUrl(imageUrls, pic.path("url").asText());
+                        addImageUrl(imageUrls, pic.path("originalUrl").asText());
+                        addImageUrl(imageUrls, pic.path("originUrl").asText());
+                    }
+                }
+            }
+            node.elements().forEachRemaining(child -> collectImageUrls(child, imageUrls));
+        } else if (node.isArray()) {
+            node.elements().forEachRemaining(child -> collectImageUrls(child, imageUrls));
+        } else if (node.isTextual()) {
+            String text = node.asText().trim();
+            if (text.startsWith("{") || text.startsWith("[")) {
+                try {
+                    collectImageUrls(objectMapper.readTree(text), imageUrls);
+                } catch (Exception ignored) {
+                    // 普通聊天文本可能恰好以括号开头，不属于嵌套 JSON。
+                }
+            }
+        }
+    }
+
+    private void addImageUrl(Set<String> imageUrls, String url) {
+        if (url != null && (url.startsWith("https://") || url.startsWith("http://") || url.startsWith("//"))) {
+            imageUrls.add(url);
         }
     }
 }

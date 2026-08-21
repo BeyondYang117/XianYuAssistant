@@ -1,6 +1,9 @@
 package com.feijimiao.xianyuassistant.controller.dto;
 
 import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import java.util.List;
 
 /**
  * 消息DTO
@@ -16,6 +19,7 @@ public class MsgDTO {
     /**
      * 消息聊天框id
      */
+    @JsonProperty("sid")
     private String sId;
     
     /**
@@ -27,6 +31,11 @@ public class MsgDTO {
      * 消息内容
      */
     private String msgContent;
+
+    /**
+     * 图片消息中的原图地址
+     */
+    private List<String> imageUrls;
     
     /**
      * 闲鱼商品ID
@@ -53,4 +62,3 @@ public class MsgDTO {
      */
     private Long messageTime;
 }
-

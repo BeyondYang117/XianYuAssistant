@@ -185,14 +185,14 @@ const formatTime = (timestamp: string | number) => {
 }
 
 const isUserMessage = (msg: ChatMessage) => {
-  return msg.contentType === 1 && msg.senderUserId !== props.currentAccountUnb
+  return (msg.contentType === 1 || msg.contentType === 2) && msg.senderUserId !== props.currentAccountUnb
 }
 
 const isMyMessage = (msg: ChatMessage) => {
   if (msg.contentType === 999 || msg.contentType === 997 || msg.contentType === 888 || msg.contentType === 887) {
     return true
   }
-  return msg.contentType === 1 && msg.senderUserId === props.currentAccountUnb
+  return (msg.contentType === 1 || msg.contentType === 2) && msg.senderUserId === props.currentAccountUnb
 }
 
 const isSystemMessage = (msg: ChatMessage) => {
@@ -200,6 +200,7 @@ const isSystemMessage = (msg: ChatMessage) => {
 }
 
 const getMessageType = (msg: ChatMessage) => {
+  if (msg.contentType === 2) return '图片'
   if (msg.contentType === 999) return '手动回复'
   if (msg.contentType === 997) return '图片回复'
   if (msg.contentType === 888) return 'AI回复'
@@ -207,7 +208,35 @@ const getMessageType = (msg: ChatMessage) => {
   return null
 }
 
+const getMessageImages = (msg: ChatMessage) => {
+  if (msg.imageUrls?.length) return msg.imageUrls
+  if (msg.msgContent?.startsWith('[图片]')) {
+    const url = msg.msgContent.slice('[图片]'.length).trim()
+    if (/^(https?:)?\/\//.test(url)) return [url]
+  }
+  return []
+}
+
+const getMessageText = (msg: ChatMessage) => {
+  const content = msg.msgContent || ''
+  const images = getMessageImages(msg)
+  if (content === '[图片]' || images.some(url => content === `[图片]${url}`)) return ''
+  return content
+}
+
+const handleInputKeydown = (event: KeyboardEvent) => {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  handleSend()
+}
+
+const handleMessageImageError = (event: Event) => {
+  const image = event.currentTarget as HTMLImageElement
+  image.parentElement?.classList.add('message-image-link--error')
+}
+
 const handleSend = async () => {
+  if (sending.value) return
   const hasImages = inputImageUrls.value.trim() && inputImageUrls.value.split(',').some((s: string) => s.trim())
   if (!inputText.value.trim() && !hasImages) {
     toast.warning('请输入消息内容或上传图片')
@@ -304,7 +333,7 @@ const handleSend = async () => {
                     }"
                   >
                     <template v-if="isSystemMessage(msg)">
-                      <div class="system-text">{{ msg.msgContent.replace(/^\[|\]$/g, '') }}</div>
+                      <div class="system-text">{{ (msg.msgContent || '').replace(/^\[|\]$/g, '') }}</div>
                     </template>
                     
                     <template v-else>
@@ -320,7 +349,26 @@ const handleSend = async () => {
                           <span v-if="getMessageType(msg)" class="message-type">{{ getMessageType(msg) }}</span>
                           <span class="message-time">{{ formatTime(msg.messageTime) }}</span>
                         </div>
-                        <div class="message-text">{{ msg.msgContent }}</div>
+                        <div v-if="getMessageImages(msg).length" class="message-images">
+                          <a
+                            v-for="imageUrl in getMessageImages(msg)"
+                            :key="imageUrl"
+                            :href="imageUrl"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="message-image-link"
+                          >
+                            <img
+                              :src="imageUrl"
+                              alt="聊天图片"
+                              class="message-image"
+                              loading="lazy"
+                              @error="handleMessageImageError"
+                            />
+                            <span class="message-image-error">图片加载失败，点击查看原图</span>
+                          </a>
+                        </div>
+                        <div v-if="getMessageText(msg)" class="message-text">{{ getMessageText(msg) }}</div>
                       </div>
                     </template>
                   </div>
@@ -348,8 +396,8 @@ const handleSend = async () => {
                 v-model="inputText"
                 class="input-textarea"
                 :rows="1"
-                placeholder="输入消息..."
-                @keydown.enter.ctrl="handleSend"
+                placeholder="输入消息，Shift+Enter 换行"
+                @keydown="handleInputKeydown"
               ></textarea>
               <div class="input-btns">
                 <button
@@ -621,6 +669,44 @@ const handleSend = async () => {
   line-height: 1.5;
   color: #1c1c1e;
   word-break: break-word;
+}
+
+.message-images {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 160px));
+  gap: 6px;
+}
+
+.message-image-link {
+  display: block;
+  width: min(240px, 100%);
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(120,120,128,.12);
+  color: rgba(28,28,30,.55);
+  text-decoration: none;
+}
+
+.message-image {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+}
+
+.message-image-error {
+  display: none;
+  padding: 18px 12px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.message-image-link--error .message-image {
+  display: none;
+}
+
+.message-image-link--error .message-image-error {
+  display: block;
 }
 
 .message-item--mine .message-text {

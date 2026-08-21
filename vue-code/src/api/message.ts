@@ -10,6 +10,7 @@ export interface ChatMessage {
   sid: string;
   contentType: number;
   msgContent: string;
+  imageUrls?: string[];
   senderUserName: string;
   senderUserId: string;
   senderAppV: string;

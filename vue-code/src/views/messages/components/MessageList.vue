@@ -67,6 +67,7 @@ const getContentTypeBg = (contentType: number, isUser: boolean) => {
 }
 
 const getContentTypeText = (contentType: number, isUser: boolean) => {
+  if (contentType === 2) return '图片消息'
   if (contentType === 999) return '手动回复'
   if (contentType === 997) return '图片回复'
   if (contentType === 888) return '自动回复'
@@ -74,6 +75,33 @@ const getContentTypeText = (contentType: number, isUser: boolean) => {
   if (!isUser) return '我发送的'
   if (contentType === 1) return '用户消息'
   return `系统消息`
+}
+
+const isUserMessage = (msg: ChatMessage) => {
+  return (msg.contentType === 1 || msg.contentType === 2) &&
+    msg.senderUserId !== props.currentAccountUnb
+}
+
+const getMessageImages = (msg: ChatMessage) => {
+  if (msg.imageUrls?.length) return msg.imageUrls
+  const content = msg.msgContent || ''
+  if (content.startsWith('[图片]')) {
+    const url = content.slice('[图片]'.length).trim()
+    if (/^(https?:)?\/\//.test(url)) return [url]
+  }
+  return []
+}
+
+const getMessageText = (msg: ChatMessage) => {
+  const content = msg.msgContent || ''
+  const images = getMessageImages(msg)
+  if (content === '[图片]' || images.some(url => content === `[图片]${url}`)) return ''
+  return content
+}
+
+const handleImgError = (event: Event) => {
+  const image = event.currentTarget as HTMLImageElement
+  image.style.display = 'none'
 }
 
 const formatMessageTime = (timestamp: string | number) => {
@@ -103,17 +131,17 @@ const formatMessageTime = (timestamp: string | number) => {
       v-for="msg in messageList"
       :key="msg.id"
       class="msg-card"
-      :class="{ 'msg-card--user': true, 'msg-card--new': msg.isNew }"
+      :class="{ 'msg-card--user': isUserMessage(msg), 'msg-card--new': msg.isNew }"
     >
       <div class="msg-card__header">
         <span
           class="msg-card__type"
           :style="{
-            color: getContentTypeColor(msg.contentType, msg.senderUserId !== ''),
-            background: getContentTypeBg(msg.contentType, msg.senderUserId !== '')
+            color: getContentTypeColor(msg.contentType, isUserMessage(msg)),
+            background: getContentTypeBg(msg.contentType, isUserMessage(msg))
           }"
         >
-          {{ getContentTypeText(msg.contentType, true) }}
+          {{ getContentTypeText(msg.contentType, isUserMessage(msg)) }}
         </span>
         <span class="msg-card__time">{{ formatMessageTime(msg.messageTime) }}</span>
       </div>
@@ -123,7 +151,12 @@ const formatMessageTime = (timestamp: string | number) => {
         <span>{{ msg.senderUserName }}</span>
       </div>
 
-      <div class="msg-card__content">{{ msg.msgContent }}</div>
+      <div v-if="getMessageImages(msg).length" class="msg-card__images">
+        <a v-for="imageUrl in getMessageImages(msg)" :key="imageUrl" :href="imageUrl" target="_blank" rel="noopener noreferrer">
+          <img :src="imageUrl" alt="聊天图片" loading="lazy" @error="handleImgError" />
+        </a>
+      </div>
+      <div v-if="getMessageText(msg)" class="msg-card__content">{{ getMessageText(msg) }}</div>
 
        <div class="msg-card__footer">
          <span class="msg-card__id">ID: {{ msg.id }}</span>
@@ -168,18 +201,25 @@ const formatMessageTime = (timestamp: string | number) => {
             <span
               class="type-tag"
               :style="{
-                color: getContentTypeColor(msg.contentType, msg.senderUserId !== ''),
-                background: getContentTypeBg(msg.contentType, msg.senderUserId !== '')
+                color: getContentTypeColor(msg.contentType, isUserMessage(msg)),
+                background: getContentTypeBg(msg.contentType, isUserMessage(msg))
               }"
             >
-              {{ getContentTypeText(msg.contentType, true) }}
+              {{ getContentTypeText(msg.contentType, isUserMessage(msg)) }}
             </span>
           </td>
           <td class="table__td">
             <span class="sender-text">{{ msg.senderUserName }}</span>
           </td>
           <td class="table__td">
-            <div class="msg-content">{{ msg.msgContent }}</div>
+            <div class="msg-content">
+              <div v-if="getMessageImages(msg).length" class="msg-content__images">
+                <a v-for="imageUrl in getMessageImages(msg)" :key="imageUrl" :href="imageUrl" target="_blank" rel="noopener noreferrer">
+                  <img :src="imageUrl" alt="聊天图片" loading="lazy" @error="handleImgError" />
+                </a>
+              </div>
+              <span v-if="getMessageText(msg)">{{ getMessageText(msg) }}</span>
+            </div>
           </td>
           <td class="table__td table__td--center">
             <span class="goods-id-text">{{ msg.xyGoodsId || '-' }}</span>
@@ -329,6 +369,43 @@ const formatMessageTime = (timestamp: string | number) => {
   color: var(--c-text-1);
   line-height: 1.55;
   word-break: break-word;
+}
+
+.msg-card__images,
+.msg-content__images {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.msg-card__images {
+  padding: 6px 16px 2px;
+}
+
+.msg-card__images a,
+.msg-content__images a {
+  display: block;
+  overflow: hidden;
+  border-radius: 7px;
+  background: rgba(120,120,128,.12);
+}
+
+.msg-card__images img {
+  display: block;
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+}
+
+.msg-content__images {
+  margin-bottom: 4px;
+}
+
+.msg-content__images img {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
 }
 
 .msg-card__footer {
