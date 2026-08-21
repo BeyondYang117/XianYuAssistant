@@ -6,6 +6,7 @@ import com.feijimiao.xianyuassistant.controller.dto.ChatWithAIReqDTO;
 import com.feijimiao.xianyuassistant.controller.dto.DeleteRAGDataReqDTO;
 import com.feijimiao.xianyuassistant.controller.dto.PutNewDataToRAGReqDTO;
 import com.feijimiao.xianyuassistant.service.AIService;
+import com.feijimiao.xianyuassistant.service.WebSearchService;
 import com.feijimiao.xianyuassistant.service.GoodsInfoService;
 import com.feijimiao.xianyuassistant.service.bo.RAGDataRespBO;
 import com.feijimiao.xianyuassistant.mapper.XianyuGoodsConfigMapper;
@@ -32,6 +33,9 @@ public class AIChatController {
 
     @Autowired
     private DynamicAIChatClientManager dynamicAIChatClientManager;
+
+    @Autowired
+    private WebSearchService webSearchService;
     
     @Autowired
     private GoodsInfoService goodsInfoService;
@@ -90,6 +94,11 @@ public class AIChatController {
         respDTO.setModel(statusInfo.getModel());
 
         return ResultObject.success(respDTO);
+    }
+
+    @PostMapping("/search/status")
+    public ResultObject<WebSearchService.WebSearchStatus> getWebSearchStatus() {
+        return ResultObject.success(webSearchService.getStatus());
     }
 
     @PostMapping("/putNewData")

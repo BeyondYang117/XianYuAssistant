@@ -100,6 +100,21 @@ export function getAIStatus(): Promise<Response> {
   })
 }
 
+export interface WebSearchStatus {
+  enabled: boolean
+  baseUrl: string
+  timeoutMs: number
+  maxResults: number
+}
+
+export function getWebSearchStatus(): Promise<Response> {
+  return fetch('/ai/search/status', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({})
+  })
+}
+
 // 保存固定资料
 export function saveFixedMaterial(data: { accountId: number; goodsId: string; fixedMaterial: string }): Promise<Response> {
   return fetch('/ai/saveFixedMaterial', {

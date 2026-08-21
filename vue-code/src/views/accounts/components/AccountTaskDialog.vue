@@ -231,7 +231,7 @@ const formatTs = (value: number | string | null | undefined) => {
   const numericValue = typeof raw === 'number' ? raw : /^\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : NaN
   const timestamp = Number.isFinite(numericValue)
     ? numericValue < 1e11 ? numericValue * 1000 : numericValue
-    : Date.parse(raw)
+    : Date.parse(String(raw))
   if (!Number.isFinite(timestamp)) return '-'
 
   const date = new Date(timestamp)

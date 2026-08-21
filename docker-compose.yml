@@ -9,6 +9,10 @@ services:
       JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx1024m}
       TZ: ${TZ:-Asia/Shanghai}
       JWT_SECRET: ${JWT_SECRET:?请设置 JWT_SECRET，或使用 deploy.sh 自动生成}
+      WEB_SEARCH_BASE_URL: http://searxng:8080
+      WEB_SEARCH_ENABLED: ${WEB_SEARCH_ENABLED:-true}
+      WEB_SEARCH_TIMEOUT_MS: ${WEB_SEARCH_TIMEOUT_MS:-4000}
+      WEB_SEARCH_MAX_RESULTS: ${WEB_SEARCH_MAX_RESULTS:-5}
     volumes:
       - ${DATA_DIR:-./data/dbdata}:/app/dbdata
       - ${LOG_DIR:-./data/logs}:/app/logs
@@ -17,9 +21,36 @@ services:
     stop_grace_period: 30s
     security_opt:
       - no-new-privileges:true
+    depends_on:
+      searxng:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent --show-error http://127.0.0.1:$${SERVER_PORT:-12400}/ > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 5
       start_period: 60s
+
+  searxng:
+    image: ${SEARXNG_IMAGE:-searxng/searxng:latest}
+    container_name: ${SEARXNG_CONTAINER_NAME:-xianyu-searxng}
+    environment:
+      SEARXNG_BASE_URL: http://searxng:8080/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-xianyu-assistant-internal-search}
+      UWSGI_WORKERS: ${SEARXNG_WORKERS:-2}
+      UWSGI_THREADS: ${SEARXNG_THREADS:-2}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    expose:
+      - "8080"
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
