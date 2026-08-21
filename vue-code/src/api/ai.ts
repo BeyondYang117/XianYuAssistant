@@ -86,6 +86,7 @@ export interface AIStatus {
   available: boolean
   apiKeyConfigured: boolean
   message: string
+  provider: string
   baseUrl: string
   model: string
 }

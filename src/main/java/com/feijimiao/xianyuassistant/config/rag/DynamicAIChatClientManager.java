@@ -1,5 +1,7 @@
 package com.feijimiao.xianyuassistant.config.rag;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.feijimiao.xianyuassistant.service.SysSettingService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -11,8 +13,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import reactor.core.publisher.Flux;
 
 /**
  * 动态AI ChatClient管理器
@@ -29,9 +36,13 @@ public class DynamicAIChatClientManager {
     private static final String AI_API_KEY_SETTING = "ai_api_key";
     private static final String AI_BASE_URL_SETTING = "ai_base_url";
     private static final String AI_MODEL_SETTING = "ai_model";
+    private static final String AI_PROVIDER_SETTING = "ai_provider";
 
     private static final String DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode";
     private static final String DEFAULT_MODEL = "deepseek-v3";
+    private static final String DEFAULT_PROVIDER = "openai-compatible";
+    private static final String CLAUDE_DEFAULT_BASE_URL = "https://api.anthropic.com";
+    private static final String CLAUDE_DEFAULT_MODEL = "claude-sonnet-4-20250514";
 
     @Autowired
     @Lazy
@@ -48,6 +59,9 @@ public class DynamicAIChatClientManager {
 
     /** 当前缓存的Model */
     private volatile String cachedModel;
+
+    /** 当前缓存的供应商 */
+    private volatile String cachedProvider;
 
     /** 当前ChatClient实例 */
     private volatile ChatClient chatClient;
@@ -72,6 +86,7 @@ public class DynamicAIChatClientManager {
         String currentApiKey = getSettingValue(AI_API_KEY_SETTING);
         String currentBaseUrl = getSettingValue(AI_BASE_URL_SETTING);
         String currentModel = getSettingValue(AI_MODEL_SETTING);
+        String currentProvider = normalizeProvider(getSettingValue(AI_PROVIDER_SETTING));
 
         if (currentApiKey == null || currentApiKey.trim().isEmpty()) {
             log.debug("[DynamicAI] API Key未配置，AI功能不可用");
@@ -82,7 +97,8 @@ public class DynamicAIChatClientManager {
         boolean needRebuild = chatClient == null
                 || !currentApiKey.equals(cachedApiKey)
                 || !safeEquals(currentBaseUrl, cachedBaseUrl)
-                || !safeEquals(currentModel, cachedModel);
+                || !safeEquals(currentModel, cachedModel)
+                || !safeEquals(currentProvider, cachedProvider);
 
         if (needRebuild) {
             lock.writeLock().lock();
@@ -91,7 +107,8 @@ public class DynamicAIChatClientManager {
                 boolean stillNeedRebuild = chatClient == null
                         || !currentApiKey.equals(cachedApiKey)
                         || !safeEquals(currentBaseUrl, cachedBaseUrl)
-                        || !safeEquals(currentModel, cachedModel);
+                        || !safeEquals(currentModel, cachedModel)
+                        || !safeEquals(currentProvider, cachedProvider);
 
                 if (stillNeedRebuild) {
                     log.info("[DynamicAI] 检测到AI配置变化，重建ChatClient: baseUrl={}, model={}, apiKey={}***{}",
@@ -99,10 +116,11 @@ public class DynamicAIChatClientManager {
                             currentApiKey.substring(0, Math.min(4, currentApiKey.length())),
                             currentApiKey.length() > 8 ? currentApiKey.substring(currentApiKey.length() - 4) : "****");
 
-                    chatClient = buildChatClient(currentApiKey, currentBaseUrl, currentModel);
+                    chatClient = buildChatClient(currentApiKey, currentBaseUrl, currentModel, currentProvider);
                     cachedApiKey = currentApiKey;
                     cachedBaseUrl = currentBaseUrl;
                     cachedModel = currentModel;
+                    cachedProvider = currentProvider;
 
                     log.info("[DynamicAI] ChatClient重建完成");
                 }
@@ -150,9 +168,11 @@ public class DynamicAIChatClientManager {
         String apiKey = getSettingValue(AI_API_KEY_SETTING);
         String baseUrl = getSettingValue(AI_BASE_URL_SETTING);
         String model = getSettingValue(AI_MODEL_SETTING);
+        String provider = normalizeProvider(getSettingValue(AI_PROVIDER_SETTING));
 
-        info.setBaseUrl(baseUrl != null ? baseUrl : DEFAULT_BASE_URL);
-        info.setModel(model != null ? model : DEFAULT_MODEL);
+        info.setProvider(provider);
+        info.setBaseUrl(effectiveBaseUrl(provider, baseUrl));
+        info.setModel(effectiveModel(provider, model));
 
         if (apiKey == null || apiKey.trim().isEmpty()) {
             info.setAvailable(false);
@@ -176,6 +196,7 @@ public class DynamicAIChatClientManager {
             cachedApiKey = null;
             cachedBaseUrl = null;
             cachedModel = null;
+            cachedProvider = null;
             chatClient = null;
         } finally {
             lock.writeLock().unlock();
@@ -185,9 +206,13 @@ public class DynamicAIChatClientManager {
     /**
      * 构建ChatClient实例
      */
-    private ChatClient buildChatClient(String apiKey, String baseUrl, String model) {
-        String effectiveBaseUrl = (baseUrl != null && !baseUrl.trim().isEmpty()) ? baseUrl.trim() : DEFAULT_BASE_URL;
-        String effectiveModel = (model != null && !model.trim().isEmpty()) ? model.trim() : DEFAULT_MODEL;
+    private ChatClient buildChatClient(String apiKey, String baseUrl, String model, String provider) {
+        if ("claude".equals(provider)) {
+            return buildClaudeChatClient(apiKey, baseUrl, model);
+        }
+
+        String effectiveBaseUrl = effectiveBaseUrl(provider, baseUrl);
+        String effectiveModel = effectiveModel(provider, model);
 
         // 创建OpenAiApi实例
         OpenAiApi openAiApi = OpenAiApi.builder()
@@ -210,6 +235,40 @@ public class DynamicAIChatClientManager {
         return ChatClient.builder(chatModel)
                 .defaultSystem("你是一个闲鱼智能客服助手")
                 .build();
+    }
+
+    private ChatClient buildClaudeChatClient(String apiKey, String baseUrl, String model) {
+        return ChatClient.builder(new ClaudeChatModel(
+                        apiKey.trim(), normalizeClaudeBaseUrl(effectiveBaseUrl("claude", baseUrl)),
+                        effectiveModel("claude", model)))
+                .defaultSystem("你是一个闲鱼智能客服助手")
+                .build();
+    }
+
+    private static String normalizeClaudeBaseUrl(String baseUrl) {
+        String normalized = baseUrl.trim().replaceAll("/$", "");
+        return normalized.endsWith("/v1") ? normalized.substring(0, normalized.length() - 3) : normalized;
+    }
+
+    private static String normalizeProvider(String provider) {
+        if (provider == null || provider.trim().isEmpty()) return DEFAULT_PROVIDER;
+        String value = provider.trim().toLowerCase();
+        return switch (value) {
+            case "claude", "anthropic" -> "claude";
+            case "openai", "codex", "openai-compatible", "compatible" ->
+                    "openai".equals(value) || "codex".equals(value) ? value : DEFAULT_PROVIDER;
+            default -> DEFAULT_PROVIDER;
+        };
+    }
+
+    private static String effectiveBaseUrl(String provider, String baseUrl) {
+        if (baseUrl != null && !baseUrl.trim().isEmpty()) return baseUrl.trim();
+        return "claude".equals(provider) ? CLAUDE_DEFAULT_BASE_URL : DEFAULT_BASE_URL;
+    }
+
+    private static String effectiveModel(String provider, String model) {
+        if (model != null && !model.trim().isEmpty()) return model.trim();
+        return "claude".equals(provider) ? CLAUDE_DEFAULT_MODEL : DEFAULT_MODEL;
     }
 
     private String getSettingValue(String key) {
@@ -235,6 +294,7 @@ public class DynamicAIChatClientManager {
         private boolean available;
         private boolean apiKeyConfigured;
         private String message;
+        private String provider;
         private String baseUrl;
         private String model;
 
@@ -250,5 +310,94 @@ public class DynamicAIChatClientManager {
         public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
         public String getModel() { return model; }
         public void setModel(String model) { this.model = model; }
+        public String getProvider() { return provider; }
+        public void setProvider(String provider) { this.provider = provider; }
+    }
+
+    /** Minimal native Anthropic Messages API adapter, used when the optional Spring AI module is unavailable. */
+    private static final class ClaudeChatModel implements org.springframework.ai.chat.model.ChatModel {
+        private final String apiKey;
+        private final String baseUrl;
+        private final String model;
+        private final WebClient webClient;
+        private final ObjectMapper objectMapper = new ObjectMapper();
+
+        private ClaudeChatModel(String apiKey, String baseUrl, String model) {
+            this.apiKey = apiKey;
+            this.baseUrl = baseUrl.replaceAll("/$", "");
+            this.model = model;
+            this.webClient = WebClient.builder().baseUrl(this.baseUrl).build();
+        }
+
+        @Override
+        public org.springframework.ai.chat.model.ChatResponse call(org.springframework.ai.chat.prompt.Prompt prompt) {
+            JsonNode response = webClient.post().uri("/v1/messages")
+                    .headers(headers -> {
+                        headers.set("x-api-key", apiKey);
+                        headers.set("anthropic-version", "2023-06-01");
+                    })
+                    .bodyValue(requestBody(prompt, false))
+                    .retrieve().bodyToMono(JsonNode.class)
+                    .block(Duration.ofSeconds(90));
+            return toResponse(response);
+        }
+
+        @Override
+        public Flux<org.springframework.ai.chat.model.ChatResponse> stream(org.springframework.ai.chat.prompt.Prompt prompt) {
+            return webClient.post().uri("/v1/messages")
+                    .headers(headers -> {
+                        headers.set("x-api-key", apiKey);
+                        headers.set("anthropic-version", "2023-06-01");
+                    })
+                    .bodyValue(requestBody(prompt, true))
+                    .retrieve().bodyToFlux(String.class)
+                    .flatMapIterable(this::parseSseChunk)
+                    .map(text -> new org.springframework.ai.chat.model.ChatResponse(
+                            List.of(new org.springframework.ai.chat.model.Generation(
+                                    new org.springframework.ai.chat.messages.AssistantMessage(text)))));
+        }
+
+        @Override
+        public org.springframework.ai.chat.prompt.ChatOptions getDefaultOptions() {
+            return org.springframework.ai.chat.prompt.ChatOptions.builder().model(model).temperature(0.7).build();
+        }
+
+        private java.util.Map<String, Object> requestBody(org.springframework.ai.chat.prompt.Prompt prompt, boolean stream) {
+            List<java.util.Map<String, String>> messages = new ArrayList<>();
+            prompt.getInstructions().forEach(message -> {
+                if (message.getMessageType() == org.springframework.ai.chat.messages.MessageType.USER) {
+                    messages.add(java.util.Map.of("role", "user", "content", message.getText()));
+                }
+            });
+            java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+            body.put("model", model);
+            body.put("max_tokens", 2048);
+            body.put("temperature", 0.7);
+            body.put("messages", messages);
+            if (prompt.getSystemMessage() != null) body.put("system", prompt.getSystemMessage().getText());
+            body.put("stream", stream);
+            return body;
+        }
+
+        private org.springframework.ai.chat.model.ChatResponse toResponse(JsonNode response) {
+            String text = response == null ? "" : response.path("content").path(0).path("text").asText("");
+            return new org.springframework.ai.chat.model.ChatResponse(List.of(
+                    new org.springframework.ai.chat.model.Generation(new org.springframework.ai.chat.messages.AssistantMessage(text))));
+        }
+
+        private List<String> parseSseChunk(String chunk) {
+            List<String> result = new ArrayList<>();
+            for (String line : chunk.split("\\r?\\n")) {
+                if (!line.startsWith("data:")) continue;
+                try {
+                    JsonNode node = objectMapper.readTree(line.substring(5).trim());
+                    String text = node.path("delta").path("text").asText("");
+                    if (!text.isEmpty()) result.add(text);
+                } catch (Exception ignored) {
+                    // Ignore keep-alive and non-JSON SSE frames.
+                }
+            }
+            return result;
+        }
     }
 }

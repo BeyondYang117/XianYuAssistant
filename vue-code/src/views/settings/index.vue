@@ -57,9 +57,18 @@ const similarityThresholdSaving = ref(false)
 const AI_API_KEY_SETTING = 'ai_api_key'
 const AI_BASE_URL_SETTING = 'ai_base_url'
 const AI_MODEL_SETTING = 'ai_model'
+const AI_PROVIDER_SETTING = 'ai_provider'
+const DEFAULT_PROVIDER = 'openai-compatible'
 const DEFAULT_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode'
 const DEFAULT_MODEL = 'deepseek-v3'
+const PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string; model: string }> = {
+  'openai-compatible': { label: 'OpenAI 兼容服务', baseUrl: DEFAULT_BASE_URL, model: DEFAULT_MODEL },
+  openai: { label: 'OpenAI', baseUrl: 'https://api.openai.com', model: 'gpt-4o-mini' },
+  claude: { label: 'Claude', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-20250514' },
+  codex: { label: 'Codex（OpenAI）', baseUrl: 'https://api.openai.com', model: 'codex-mini-latest' }
+}
 
+const aiProvider = ref(DEFAULT_PROVIDER)
 const aiApiKey = ref('')
 const aiBaseUrl = ref(DEFAULT_BASE_URL)
 const aiModel = ref(DEFAULT_MODEL)
@@ -110,7 +119,8 @@ const aiStatus = ref({
   apiKeyConfigured: false,
   message: '',
   baseUrl: '',
-  model: ''
+  model: '',
+  provider: DEFAULT_PROVIDER
 })
 
 // 菜单配置
@@ -170,12 +180,16 @@ onMounted(async () => {
 
 async function loadAIConfig() {
   try {
-    const [apiKeyRes, baseUrlRes, modelRes] = await Promise.all([
+    const [providerRes, apiKeyRes, baseUrlRes, modelRes] = await Promise.all([
+      getSetting({ settingKey: AI_PROVIDER_SETTING }),
       getSetting({ settingKey: AI_API_KEY_SETTING }),
       getSetting({ settingKey: AI_BASE_URL_SETTING }),
       getSetting({ settingKey: AI_MODEL_SETTING })
     ])
 
+    if (providerRes.code === 200 && providerRes.data && providerRes.data.settingValue) {
+      aiProvider.value = providerRes.data.settingValue
+    }
     if (apiKeyRes.code === 200 && apiKeyRes.data) {
       aiApiKey.value = apiKeyRes.data.settingValue || ''
     }
@@ -351,7 +365,12 @@ async function handleSaveAIConfig() {
   aiApiKeySaving.value = true
   try {
     // 保存三个配置
-    const [keyRes, urlRes, modelRes] = await Promise.all([
+    const [providerRes, keyRes, urlRes, modelRes] = await Promise.all([
+      saveSetting({
+        settingKey: AI_PROVIDER_SETTING,
+        settingValue: aiProvider.value,
+        settingDesc: 'AI模型供应商（配置后立即生效，无需重启）'
+      }),
       saveSetting({
         settingKey: AI_API_KEY_SETTING,
         settingValue: aiApiKey.value.trim(),
@@ -369,7 +388,7 @@ async function handleSaveAIConfig() {
       })
     ])
 
-    if (keyRes.code === 200 && urlRes.code === 200 && modelRes.code === 200) {
+    if (providerRes.code === 200 && keyRes.code === 200 && urlRes.code === 200 && modelRes.code === 200) {
       toast.success('AI 配置保存成功，已立即生效')
       // 刷新 AI 状态
       await loadAIStatus()
@@ -383,9 +402,17 @@ async function handleSaveAIConfig() {
 }
 
 function handleResetAIConfig() {
+  aiProvider.value = DEFAULT_PROVIDER
   aiApiKey.value = ''
   aiBaseUrl.value = DEFAULT_BASE_URL
   aiModel.value = DEFAULT_MODEL
+}
+
+function applyProviderPreset() {
+  const preset = PROVIDER_PRESETS[aiProvider.value]
+  if (!preset) return
+  aiBaseUrl.value = preset.baseUrl
+  aiModel.value = preset.model
 }
 
 async function handleSaveEmbeddingConfig() {
@@ -889,6 +916,10 @@ function handleBackupMenuEnter() {
             <span class="settings__info-label">模型</span>
             <span class="settings__info-value">{{ aiStatus.model }}</span>
           </div>
+          <div v-if="aiStatus.provider" class="settings__ai-status-row">
+            <span class="settings__info-label">供应商</span>
+            <span class="settings__info-value">{{ PROVIDER_PRESETS[aiStatus.provider]?.label || aiStatus.provider }}</span>
+          </div>
         </div>
 
         <!-- AI 对话配置 -->
@@ -896,6 +927,13 @@ function handleBackupMenuEnter() {
           <div class="settings__section-title">对话模型配置</div>
           <p class="settings__desc">配置 AI 对话服务，配置后立即生效，无需重启服务</p>
           <div class="settings__form">
+            <div class="settings__field">
+              <label class="settings__label">模型供应商</label>
+              <select v-model="aiProvider" class="settings__input" :disabled="aiApiKeySaving" @change="applyProviderPreset">
+                <option v-for="(preset, provider) in PROVIDER_PRESETS" :key="provider" :value="provider">{{ preset.label }}</option>
+              </select>
+              <p class="settings__field-hint">Codex 使用 OpenAI 接口协议；Claude 使用 Anthropic Messages API。</p>
+            </div>
             <div class="settings__field">
               <label class="settings__label">
                 API Key
@@ -1751,6 +1789,12 @@ function handleBackupMenuEnter() {
 
 .settings__input:disabled {
   opacity: 0.5;
+}
+
+.settings__field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: rgba(28,28,30,.55);
 }
 
 .settings__eye-btn {

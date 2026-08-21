@@ -48,7 +48,7 @@ const form = ref({
   reviewRequestMaxAttempts: 1
 })
 const lastPolishDate = ref('')
-const lastRateScanAt = ref(0)
+const lastRateScanAt = ref<number | string>(0)
 
 const runNowLabel = computed(() => {
   switch (activeTab.value) {
@@ -220,9 +220,22 @@ const statusText = (status: string) => {
   }
 }
 
-const formatTs = (ts: number) => {
-  if (!ts) return '-'
-  return new Date(ts).toLocaleString('zh-CN', { hour12: false })
+const formatTs = (value: number | string | null | undefined) => {
+  if (value === null || value === undefined || value === '') return '-'
+
+  // JSON clients may receive Long timestamps as strings. Numeric timestamps
+  // are normalized to milliseconds so both seconds and milliseconds work.
+  const raw = typeof value === 'string' ? value.trim() : value
+  if (raw === '') return '-'
+
+  const numericValue = typeof raw === 'number' ? raw : /^\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : NaN
+  const timestamp = Number.isFinite(numericValue)
+    ? numericValue < 1e11 ? numericValue * 1000 : numericValue
+    : Date.parse(raw)
+  if (!Number.isFinite(timestamp)) return '-'
+
+  const date = new Date(timestamp)
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('zh-CN', { hour12: false })
 }
 </script>
 

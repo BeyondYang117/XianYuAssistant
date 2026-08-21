@@ -29,7 +29,7 @@ public class SysSettingServiceImpl implements SysSettingService {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
     /** AI相关配置键，变更时需要触发ChatClient重建 */
-    private static final Set<String> AI_RELATED_KEYS = Set.of("ai_api_key", "ai_base_url", "ai_model");
+    private static final Set<String> AI_RELATED_KEYS = Set.of("ai_provider", "ai_api_key", "ai_base_url", "ai_model");
 
     @Autowired
     private XianyuSysSettingMapper sysSettingMapper;

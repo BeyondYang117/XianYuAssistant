@@ -85,6 +85,7 @@ public class AIChatController {
         respDTO.setAvailable(statusInfo.isAvailable());
         respDTO.setApiKeyConfigured(statusInfo.isApiKeyConfigured());
         respDTO.setMessage(statusInfo.getMessage());
+        respDTO.setProvider(statusInfo.getProvider());
         respDTO.setBaseUrl(statusInfo.getBaseUrl());
         respDTO.setModel(statusInfo.getModel());
 
@@ -184,6 +185,7 @@ public class AIChatController {
         private boolean available;
         private boolean apiKeyConfigured;
         private String message;
+        private String provider;
         private String baseUrl;
         private String model;
 
@@ -195,6 +197,8 @@ public class AIChatController {
         public void setApiKeyConfigured(boolean apiKeyConfigured) { this.apiKeyConfigured = apiKeyConfigured; }
         public String getMessage() { return message; }
         public void setMessage(String message) { this.message = message; }
+        public String getProvider() { return provider; }
+        public void setProvider(String provider) { this.provider = provider; }
         public String getBaseUrl() { return baseUrl; }
         public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
         public String getModel() { return model; }
