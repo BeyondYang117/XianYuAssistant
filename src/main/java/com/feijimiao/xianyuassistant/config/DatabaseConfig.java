@@ -16,9 +16,13 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * 数据库配置类
@@ -102,26 +106,33 @@ public class DatabaseConfig {
                 new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8)
             );
 
-            // 执行SQL脚本
+            // 执行SQL脚本。旧数据库必须先补字段，再创建依赖新字段的索引。
             try (Connection conn = dataSource.getConnection();
                  Statement stmt = conn.createStatement()) {
                 
                 // 智能分割：识别触发器(CREATE TRIGGER...BEGIN...END;)作为完整语句
                 List<String> statements = splitSqlStatements(sql);
                 int executedCount = 0;
-                
+
+                // CREATE TABLE IF NOT EXISTS 只负责新库，现有表不会自动增加新字段。
+                // 因此先确保所有表存在，再根据最新表定义迁移字段。
                 for (String sqlStatement : statements) {
                     String cleanSql = removeComments(sqlStatement.trim());
-                    
-                    if (!cleanSql.isEmpty()) {
-                        try {
-                            stmt.execute(cleanSql);
-                            executedCount++;
-                            log.debug("执行SQL成功: {}", cleanSql.substring(0, Math.min(50, cleanSql.length())));
-                        } catch (Exception e) {
-                            log.error("执行SQL失败: {}", cleanSql, e);
-                            throw e;
-                        }
+
+                    if (isCreateTableStatement(cleanSql)) {
+                        executeSql(stmt, cleanSql);
+                        executedCount++;
+                    }
+                }
+
+                migrateMissingColumns(stmt);
+
+                for (String sqlStatement : statements) {
+                    String cleanSql = removeComments(sqlStatement.trim());
+
+                    if (!cleanSql.isEmpty() && !isCreateTableStatement(cleanSql)) {
+                        executeSql(stmt, cleanSql);
+                        executedCount++;
                     }
                 }
                 
@@ -139,6 +150,63 @@ public class DatabaseConfig {
             log.error("初始化数据库失败", e);
             throw new RuntimeException("初始化数据库失败: " + e.getMessage(), e);
         }
+    }
+
+    private boolean isCreateTableStatement(String sql) {
+        return !sql.isEmpty() && sql.toUpperCase(Locale.ROOT).startsWith("CREATE TABLE");
+    }
+
+    private void executeSql(Statement stmt, String sql) throws Exception {
+        try {
+            stmt.execute(sql);
+            log.debug("执行SQL成功: {}", sql.substring(0, Math.min(50, sql.length())));
+        } catch (Exception e) {
+            log.error("执行SQL失败: {}", sql, e);
+            throw e;
+        }
+    }
+
+    /**
+     * 按最新 schema 为现有表补齐字段，确保后续索引和触发器可以安全创建。
+     */
+    private void migrateMissingColumns(Statement stmt) throws Exception {
+        SqlSchemaParser.SchemaDefinition schema = new SqlSchemaParser().parseSchemaFile("sql/schema.sql");
+        int addedCount = 0;
+
+        for (SqlSchemaParser.TableDefinition table : schema.getTables().values()) {
+            Set<String> existingColumns = getTableColumns(stmt, table.getName());
+
+            for (SqlSchemaParser.ColumnDefinition column : table.getColumns()) {
+                if (existingColumns.contains(column.getName().toLowerCase(Locale.ROOT))) {
+                    continue;
+                }
+
+                String alterSql = "ALTER TABLE " + quoteIdentifier(table.getName())
+                        + " ADD COLUMN " + column.getDefinition();
+                log.info("为现有表添加缺失字段: {}.{}", table.getName(), column.getName());
+                executeSql(stmt, alterSql);
+                existingColumns.add(column.getName().toLowerCase(Locale.ROOT));
+                addedCount++;
+            }
+        }
+
+        if (addedCount > 0) {
+            log.info("数据库字段迁移完成，共添加 {} 个字段", addedCount);
+        }
+    }
+
+    private Set<String> getTableColumns(Statement stmt, String tableName) throws Exception {
+        Set<String> columns = new HashSet<>();
+        try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(" + quoteIdentifier(tableName) + ")")) {
+            while (rs.next()) {
+                columns.add(rs.getString("name").toLowerCase(Locale.ROOT));
+            }
+        }
+        return columns;
+    }
+
+    private String quoteIdentifier(String identifier) {
+        return "\"" + identifier.replace("\"", "\"\"") + "\"";
     }
 
     /**

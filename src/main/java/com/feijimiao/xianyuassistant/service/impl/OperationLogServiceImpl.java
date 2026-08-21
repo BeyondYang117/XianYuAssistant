@@ -20,6 +20,9 @@ import java.util.Map;
 @Slf4j
 @Service
 public class OperationLogServiceImpl implements OperationLogService {
+
+    private static final int MIN_RETENTION_DAYS = 1;
+    private static final int MAX_RETENTION_DAYS = 3650;
     
     @Autowired
     private XianyuOperationLogMapper operationLogMapper;
@@ -119,6 +122,7 @@ public class OperationLogServiceImpl implements OperationLogService {
     
     @Override
     public int deleteOldLogs(int days) {
+        validateRetentionDays(days);
         try {
             long threshold = System.currentTimeMillis() - (days * 24L * 60 * 60 * 1000);
             
@@ -131,6 +135,12 @@ public class OperationLogServiceImpl implements OperationLogService {
         } catch (Exception e) {
             log.error("删除旧日志失败", e);
             return 0;
+        }
+    }
+
+    private void validateRetentionDays(int days) {
+        if (days < MIN_RETENTION_DAYS || days > MAX_RETENTION_DAYS) {
+            throw new IllegalArgumentException("日志保留天数必须在1到3650之间");
         }
     }
 }

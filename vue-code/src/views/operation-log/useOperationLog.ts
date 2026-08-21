@@ -63,7 +63,8 @@ export function useOperationLog() {
 
   // Delete dialog
   const deleteDialogVisible = ref(false)
-  const deleteDays = ref('')
+  const deleteDays = ref('30')
+  const deleting = ref(false)
 
   // Check screen size
   const checkScreenSize = () => {
@@ -266,18 +267,25 @@ export function useOperationLog() {
 
   // Delete old logs - open dialog
   const openDeleteDialog = () => {
-    deleteDays.value = ''
+    deleteDays.value = '30'
     deleteDialogVisible.value = true
+  }
+
+  const closeDeleteDialog = () => {
+    if (!deleting.value) {
+      deleteDialogVisible.value = false
+    }
   }
 
   // Confirm delete old logs
   const confirmDeleteOld = async () => {
-    const days = parseInt(deleteDays.value)
-    if (isNaN(days) || days <= 0) {
-      showError('请输入有效的天数')
+    const days = Number(deleteDays.value)
+    if (!Number.isInteger(days) || days < 1 || days > 3650) {
+      showError('请输入1到3650之间的整数天数')
       return
     }
 
+    deleting.value = true
     try {
       const response = await deleteOldLogs(days)
       if (response.code === 0 || response.code === 200) {
@@ -293,6 +301,8 @@ export function useOperationLog() {
       if (!error.messageShown) {
         showError('删除失败: ' + error.message)
       }
+    } finally {
+      deleting.value = false
     }
   }
 
@@ -327,6 +337,7 @@ export function useOperationLog() {
     detailLog,
     deleteDialogVisible,
     deleteDays,
+    deleting,
     currentAccount,
 
     // Constants
@@ -345,6 +356,7 @@ export function useOperationLog() {
     viewDetail,
     closeDetail,
     openDeleteDialog,
+    closeDeleteDialog,
     confirmDeleteOld,
     goBackToAccounts,
     getAccountAvatar,

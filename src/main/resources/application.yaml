@@ -1,6 +1,12 @@
 server:
   port: 12400
 
+logging:
+  operation-log:
+    cleanup-enabled: true
+    retention-days: 30
+    cleanup-cron: "0 30 3 * * ?"
+
 app:
   # 由 Maven 资源过滤注入 pom.xml 的 <version>，版本号只在 pom.xml 维护
   version: '@project.version@'

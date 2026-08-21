@@ -10,6 +10,7 @@ import IconChevronLeft from '@/components/icons/IconChevronLeft.vue'
 import IconChevronRight from '@/components/icons/IconChevronRight.vue'
 import IconClock from '@/components/icons/IconClock.vue'
 import IconRefresh from '@/components/icons/IconRefresh.vue'
+import IconTrash from '@/components/icons/IconTrash.vue'
 import IconEmpty from '@/components/icons/IconEmpty.vue'
 import IconInfo from '@/components/icons/IconInfo.vue'
 
@@ -27,11 +28,17 @@ const {
   selectedAccountForMobile,
   detailDialogVisible,
   detailLog,
+  deleteDialogVisible,
+  deleteDays,
+  deleting,
   selectAccount,
   handlePageChange,
   handleRefresh,
   viewDetail,
   closeDetail,
+  openDeleteDialog,
+  closeDeleteDialog,
+  confirmDeleteOld,
   goBackToAccounts,
   getAccountAvatar,
   getAccountName,
@@ -71,10 +78,18 @@ const HeaderSelectors = defineComponent({
       ]),
       h('button', {
         class: ['header-refresh-btn', { 'header-refresh-btn--loading': loading.value }],
+        title: '刷新操作记录',
         disabled: loading.value,
         onClick: handleRefresh
       }, [
         h(IconRefresh, { class: 'header-refresh-icon' })
+      ]),
+      h('button', {
+        class: 'header-refresh-btn header-delete-btn',
+        title: '清理旧日志',
+        onClick: openDeleteDialog
+      }, [
+        h(IconTrash, { class: 'header-refresh-icon' })
       ])
     ])
   }
@@ -119,6 +134,10 @@ onMounted(() => {
         <button class="btn btn--secondary" @click="handleRefresh">
           <IconRefresh />
           <span class="mobile-hidden">刷新</span>
+        </button>
+        <button class="btn btn--danger" @click="openDeleteDialog">
+          <IconTrash />
+          <span class="mobile-hidden">清理旧日志</span>
         </button>
       </div>
     </div>
@@ -407,6 +426,48 @@ onMounted(() => {
               <span class="ol__detail-label">错误信息</span>
               <pre class="ol__detail-pre ol__detail-pre--error">{{ detailLog.errorMessage }}</pre>
             </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Delete Old Logs Dialog -->
+    <Transition name="overlay-fade">
+      <div
+        v-if="deleteDialogVisible"
+        class="ol__dialog-overlay"
+        @click.self="closeDeleteDialog"
+      >
+        <div class="ol__dialog ol__dialog--compact">
+          <div class="ol__dialog-header">
+            <h3 class="ol__dialog-title">清理旧日志</h3>
+            <button class="ol__dialog-close" :disabled="deleting" title="关闭" @click="closeDeleteDialog">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div class="ol__dialog-body">
+            <p class="ol__dialog-description">删除指定保留天数以前的全部账号操作记录。此操作不可撤销。</p>
+            <label class="ol__dialog-field-label" for="operation-log-retention-days">保留最近天数</label>
+            <input
+              id="operation-log-retention-days"
+              v-model="deleteDays"
+              class="ol__dialog-input"
+              type="number"
+              min="1"
+              max="3650"
+              inputmode="numeric"
+              :disabled="deleting"
+              @keyup.enter="confirmDeleteOld"
+            />
+          </div>
+          <div class="ol__dialog-footer">
+            <button class="ol__dialog-btn ol__dialog-btn--cancel" :disabled="deleting" @click="closeDeleteDialog">取消</button>
+            <button class="ol__dialog-btn ol__dialog-btn--danger" :disabled="deleting" @click="confirmDeleteOld">
+              {{ deleting ? '清理中...' : '确认清理' }}
+            </button>
           </div>
         </div>
       </div>

@@ -958,6 +958,24 @@
   flex-direction: column;
 }
 
+.ol__dialog--compact {
+  max-width: 420px;
+}
+
+.ol__dialog-description {
+  margin: 0 0 var(--d-space-4);
+  color: var(--d-text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ol__dialog-field-label {
+  display: block;
+  color: var(--d-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .ol__dialog-header {
   display: flex;
   justify-content: space-between;
@@ -1063,6 +1081,12 @@
   transition: border-color var(--d-transition), box-shadow var(--d-transition);
   text-align: center;
   margin-top: var(--d-space-3);
+}
+
+.ol__dialog-btn:disabled,
+.ol__dialog-close:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .ol__dialog-input:focus {

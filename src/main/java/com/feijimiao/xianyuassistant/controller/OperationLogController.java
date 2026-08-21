@@ -70,11 +70,12 @@ public class OperationLogController {
     @PostMapping("/deleteOld")
     public ResultObject<Integer> deleteOldLogs(@RequestBody DeleteOldLogsReqDTO reqDTO) {
         try {
-            log.info("删除旧操作记录: days={}", reqDTO.getDays());
-            
-            if (reqDTO.getDays() == null || reqDTO.getDays() < 1) {
-                return ResultObject.failed("天数必须大于0");
+            if (reqDTO == null || reqDTO.getDays() == null
+                    || reqDTO.getDays() < 1 || reqDTO.getDays() > 3650) {
+                return ResultObject.validateFailed("日志保留天数必须在1到3650之间");
             }
+
+            log.info("删除旧操作记录: days={}", reqDTO.getDays());
             
             int deleted = operationLogService.deleteOldLogs(reqDTO.getDays());
             
