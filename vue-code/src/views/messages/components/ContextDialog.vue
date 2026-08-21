@@ -524,14 +524,19 @@ const handleSend = async () => {
 /* Body */
 .modal-body {
   flex: 1;
+  min-height: 0;
   padding: 0 20px;
   overflow: hidden;
+  position: relative;
+  z-index: 1;
 }
 
 .context-content {
   height: 100%;
+  box-sizing: border-box;
   overflow-y: auto;
-  padding: 14px;
+  padding: 14px 14px 24px;
+  scroll-padding-bottom: 24px;
   background: rgba(255,255,255,0.38);
   border-radius: 12px;
 }
@@ -584,6 +589,7 @@ const handleSend = async () => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding-bottom: 8px;
 }
 
 .message-item {
@@ -760,7 +766,11 @@ const handleSend = async () => {
   padding: 10px 16px;
   flex-shrink: 0;
   gap: 8px;
-  border-top: 0.5px solid rgba(255,255,255,0.35);
+  position: relative;
+  z-index: 3;
+  border-top: 1px solid rgba(60,60,67,.12);
+  background: #f7f7f9;
+  box-shadow: 0 -8px 20px rgba(0,0,0,.04);
 }
 
 .input-uploader-row {
@@ -787,9 +797,7 @@ const handleSend = async () => {
   font-size: 13px;
   line-height: 1.5;
   resize: none;
-  background: rgba(255,255,255,0.55);
-  backdrop-filter: blur(16px) saturate(1.6);
-  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  background: #fff;
   color: #1c1c1e;
   transition: border-color 0.15s ease;
   font-family: inherit;
