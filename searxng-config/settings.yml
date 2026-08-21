@@ -1,4 +1,7 @@
-use_default_settings: true
+use_default_settings:
+  engines:
+    keep_only:
+      - baidu
 
 server:
   bind_address: "0.0.0.0"
@@ -13,16 +16,11 @@ search:
     - html
     - json
 
-# These engines either target niche networks or perform a slow remote
-# initialization. They are not needed for customer-support web search and can
-# make startup/searches noisy or unnecessarily slow.
-engines:
-  - name: ahmia
-    disabled: true
-  - name: torch
-    disabled: true
-  - name: wikidata
-    disabled: true
+outgoing:
+  # Keep a single unreachable provider from holding up the whole customer
+  # support request. The application has its own four-second upper bound.
+  request_timeout: 3.0
+  max_redirects: 2
 
 ui:
   static_use_hash: true

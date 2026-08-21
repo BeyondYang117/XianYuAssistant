@@ -57,7 +57,7 @@ services:
       - SETGID
       - SETUID
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; request = urllib.request.Request('http://127.0.0.1:8080/', headers={'X-Forwarded-For': '127.0.0.1', 'X-Real-IP': '127.0.0.1'}); urllib.request.urlopen(request, timeout=3)\" || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; request = urllib.request.Request('http://127.0.0.1:8080/healthz', headers={'X-Forwarded-For': '127.0.0.1', 'X-Real-IP': '127.0.0.1'}); urllib.request.urlopen(request, timeout=3)\" || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5

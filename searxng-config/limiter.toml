@@ -1,0 +1,2 @@
+# The limiter is disabled in settings.yml. Keep this valid TOML file present
+# because SearXNG loads the bot-detection configuration during startup anyway.
