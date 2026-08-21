@@ -1,10 +1,16 @@
 package com.feijimiao.xianyuassistant.service.reply;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.feijimiao.xianyuassistant.entity.XianyuAutoReplyDelayTask;
 import com.feijimiao.xianyuassistant.event.chatMessageEvent.ChatMessageData;
+import com.feijimiao.xianyuassistant.mapper.XianyuAutoReplyDelayTaskMapper;
 import com.feijimiao.xianyuassistant.service.AutoReplyDelayService;
 import com.feijimiao.xianyuassistant.service.AutoReplyService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
@@ -51,6 +57,12 @@ public class AutoReplyDelayServiceImpl implements AutoReplyDelayService {
 
     @Autowired
     private ReplyConfigProvider configProvider;
+
+    @Autowired
+    private XianyuAutoReplyDelayTaskMapper delayTaskMapper;
+
+    @Autowired
+    private ObjectMapper objectMapper;
     
     /** 延时任务调度线程池 */
     private ScheduledExecutorService scheduler;
@@ -72,6 +84,9 @@ public class AutoReplyDelayServiceImpl implements AutoReplyDelayService {
      * </ul>
      */
     private final Map<String, List<ChatMessageData>> pendingMessages = new ConcurrentHashMap<>();
+
+    /** 同一会话的消息合并、持久化和重新计时必须串行 */
+    private final Map<String, Object> taskLocks = new ConcurrentHashMap<>();
     
     @PostConstruct
     public void init() {
@@ -81,6 +96,12 @@ public class AutoReplyDelayServiceImpl implements AutoReplyDelayService {
             return t;
         });
         log.info("自动回复延时调度器初始化完成");
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        restorePersistedTasks();
+        log.info("自动回复延时任务恢复完成，共{}个", pendingTasks.size());
     }
     
     @PreDestroy
@@ -94,6 +115,7 @@ public class AutoReplyDelayServiceImpl implements AutoReplyDelayService {
         });
         pendingTasks.clear();
         pendingMessages.clear();
+        taskLocks.clear();
         if (scheduler != null) {
             scheduler.shutdown();
             try {
@@ -142,48 +164,38 @@ public class AutoReplyDelayServiceImpl implements AutoReplyDelayService {
         int delaySeconds = configProvider.getDelaySeconds(accountId, messageData.getXyGoodsId());
         log.info("【账号{}】提交延时回复任务: sId={}, delay={}s", accountId, sId, delaySeconds);
         
-        // 取消该会话之前的延时任务（买家连续发消息时重新计时）
-        cancelDelayTask(accountId, sId);
-        
-        // 追加消息到待处理列表
-        pendingMessages.compute(taskKey, (key, existingList) -> {
-            if (existingList == null) existingList = new ArrayList<>();
-            existingList.add(messageData);
-            return existingList;
-        });
-        
-        // 提交新的延时任务
-        ScheduledFuture<?> future = scheduler.schedule(() -> {
-            try {
-                pendingTasks.remove(taskKey);
-                
-                // 防线2：延时到期时再次检查人工接管（防止并发竞态）
-                if (takeoverManager.isTakenOver(accountId, sId)) {
-                    log.info("【账号{}】延时任务到期时会话已被人工接管，取消自动回复: sId={}", accountId, sId);
-                    pendingMessages.remove(taskKey);
-                    return;
-                }
-
-                List<ChatMessageData> messageList = pendingMessages.remove(taskKey);
-                if (messageList != null && !messageList.isEmpty()) {
-                    log.info("【账号{}】延时任务到期，执行自动回复: sId={}, 消息数={}", accountId, sId, messageList.size());
-                    autoReplyService.executeAutoReply(messageList);
-                }
-            } catch (Exception e) {
-                log.error("【账号{}】执行延时回复任务异常: sId={}", accountId, sId, e);
+        synchronized (taskLocks.computeIfAbsent(taskKey, ignored -> new Object())) {
+            if (takeoverManager.isTakenOver(accountId, sId)) {
+                log.info("【账号{}】会话已被人工接管，取消正在准备的自动回复: sId={}", accountId, sId);
+                cancelScheduledFuture(taskKey);
+                pendingMessages.remove(taskKey);
+                delayTaskMapper.deleteByTaskKey(taskKey);
+                return;
             }
-        }, delaySeconds, TimeUnit.SECONDS);
-        
-        pendingTasks.put(taskKey, future);
+            // 取消该会话之前的内存计时器（保留已收集消息）
+            cancelScheduledFuture(taskKey);
+
+            // 追加消息到待处理列表
+            pendingMessages.compute(taskKey, (key, existingList) -> {
+                if (existingList == null) existingList = new ArrayList<>();
+                existingList.add(messageData);
+                return existingList;
+            });
+
+            long executeAt = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(delaySeconds);
+            persistTask(taskKey, accountId, sId, pendingMessages.get(taskKey), executeAt);
+            scheduleTask(taskKey, accountId, sId, executeAt);
+        }
     }
     
     @Override
     public void cancelDelayTask(Long accountId, String sId) {
         if (accountId == null || sId == null) return;
         String taskKey = buildTaskKey(accountId, sId);
-        ScheduledFuture<?> future = pendingTasks.remove(taskKey);
-        if (future != null && !future.isDone()) {
-            future.cancel(false);
+        synchronized (taskLocks.computeIfAbsent(taskKey, ignored -> new Object())) {
+            cancelScheduledFuture(taskKey);
+            pendingMessages.remove(taskKey);
+            delayTaskMapper.deleteByTaskKey(taskKey);
         }
     }
     
@@ -219,7 +231,7 @@ public class AutoReplyDelayServiceImpl implements AutoReplyDelayService {
         }
 
         int minutes = configProvider.getInterventionMinutes(accountId, xyGoodsId);
-        takeoverManager.takeover(accountId, sId, minutes);
+        takeoverManager.takeover(accountId, xyGoodsId, sId, minutes);
 
         // 立即取消该会话的延时任务和待处理消息
         cancelDelayTask(accountId, sId);
@@ -230,5 +242,91 @@ public class AutoReplyDelayServiceImpl implements AutoReplyDelayService {
     
     private String buildTaskKey(Long accountId, String sId) {
         return accountId + "_" + sId;
+    }
+
+    private void restorePersistedTasks() {
+        for (XianyuAutoReplyDelayTask task : delayTaskMapper.selectAll()) {
+            try {
+                List<ChatMessageData> messages = objectMapper.readValue(
+                        task.getMessagesJson(), new TypeReference<List<ChatMessageData>>() {});
+                if (messages == null || messages.isEmpty()) {
+                    delayTaskMapper.deleteByTaskKey(task.getTaskKey());
+                    continue;
+                }
+                cancelScheduledFuture(task.getTaskKey());
+                pendingMessages.put(task.getTaskKey(), new CopyOnWriteArrayList<>(messages));
+                scheduleTask(task.getTaskKey(), task.getXianyuAccountId(), task.getSId(), task.getExecuteAt());
+            } catch (Exception e) {
+                log.error("恢复自动回复延时任务失败: taskKey={}", task.getTaskKey(), e);
+            }
+        }
+    }
+
+    private void persistTask(String taskKey, Long accountId, String sId,
+                             List<ChatMessageData> messages, long executeAt) {
+        try {
+            XianyuAutoReplyDelayTask task = new XianyuAutoReplyDelayTask();
+            task.setTaskKey(taskKey);
+            task.setXianyuAccountId(accountId);
+            task.setSId(sId);
+            task.setMessagesJson(objectMapper.writeValueAsString(messages));
+            task.setExecuteAt(executeAt);
+            delayTaskMapper.upsert(task);
+        } catch (Exception e) {
+            throw new IllegalStateException("持久化自动回复延时任务失败: " + taskKey, e);
+        }
+    }
+
+    private void scheduleTask(String taskKey, Long accountId, String sId, long executeAt) {
+        long delayMillis = Math.max(0, executeAt - System.currentTimeMillis());
+        ScheduledFuture<?> future = scheduler.schedule(
+                () -> executeTask(taskKey, accountId, sId, executeAt), delayMillis, TimeUnit.MILLISECONDS);
+        pendingTasks.put(taskKey, future);
+    }
+
+    private void executeTask(String taskKey, Long accountId, String sId, long executeAt) {
+        synchronized (taskLocks.computeIfAbsent(taskKey, ignored -> new Object())) {
+            List<ChatMessageData> messageList = pendingMessages.get(taskKey);
+            try {
+                if (delayTaskMapper.isCurrent(taskKey, executeAt) == 0) {
+                    return;
+                }
+                pendingTasks.remove(taskKey);
+                // 先切断旧批次：此后到达的新消息会建立新列表和新计时版本。
+                pendingMessages.remove(taskKey);
+
+                if (takeoverManager.isTakenOver(accountId, sId)) {
+                    log.info("【账号{}】延时任务到期时会话已被人工接管，取消自动回复: sId={}", accountId, sId);
+                    delayTaskMapper.deleteVersion(taskKey, executeAt);
+                    return;
+                }
+
+                if (messageList != null && !messageList.isEmpty()) {
+                    log.info("【账号{}】延时任务到期，执行自动回复: sId={}, 消息数={}", accountId, sId, messageList.size());
+                    autoReplyService.executeAutoReply(new ArrayList<>(messageList));
+                }
+                delayTaskMapper.deleteVersion(taskKey, executeAt);
+            } catch (Exception e) {
+                log.error("【账号{}】执行延时回复任务异常，30秒后重试: sId={}", accountId, sId, e);
+                if (messageList != null && !messageList.isEmpty()) {
+                    pendingMessages.put(taskKey, new CopyOnWriteArrayList<>(messageList));
+                    long retryAt = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(30);
+                    try {
+                        persistTask(taskKey, accountId, sId, messageList, retryAt);
+                        scheduleTask(taskKey, accountId, sId, retryAt);
+                    } catch (Exception persistException) {
+                        log.error("【账号{}】保存延时回复重试任务失败，将在重启后恢复: sId={}",
+                                accountId, sId, persistException);
+                    }
+                }
+            }
+        }
+    }
+
+    private void cancelScheduledFuture(String taskKey) {
+        ScheduledFuture<?> future = pendingTasks.remove(taskKey);
+        if (future != null && !future.isDone()) {
+            future.cancel(false);
+        }
     }
 }

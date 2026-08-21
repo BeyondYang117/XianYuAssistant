@@ -14,6 +14,7 @@ import com.feijimiao.xianyuassistant.exception.BusinessException;
 import com.feijimiao.xianyuassistant.mapper.XianyuGoodsAutoDeliveryConfigMapper;
 import com.feijimiao.xianyuassistant.mapper.XianyuGoodsOrderMapper;
 import com.feijimiao.xianyuassistant.service.AccountService;
+import com.feijimiao.xianyuassistant.service.DeliveryGuardService;
 import com.feijimiao.xianyuassistant.service.OrderService;
 import com.feijimiao.xianyuassistant.service.delivery.DeliveryContext;
 import com.feijimiao.xianyuassistant.service.delivery.DeliveryStrategyResolver;
@@ -56,6 +57,9 @@ public class OrderServiceImpl implements OrderService {
 
     @Autowired
     private OrderDetailFetcher orderDetailFetcher;
+
+    @Autowired(required = false)
+    private DeliveryGuardService deliveryGuardService;
     
     private final ObjectMapper objectMapper = new ObjectMapper();
     
@@ -131,7 +135,7 @@ public class OrderServiceImpl implements OrderService {
                 log.error("【账号{}】❌ 闲鱼新发货API失败: {}", accountId, errorMsg);
 
                 if (result.isTokenExpired()) {
-                    return "令牌过期，请稍后重试或手动更新Cookie";
+                    return null;
                 }
 
                 if (errorMsg != null && errorMsg.contains("ORDER_ALREADY_DELIVERY")) {
@@ -188,7 +192,7 @@ public class OrderServiceImpl implements OrderService {
                 log.error("【账号{}】❌ 闲鱼API确认发货失败: {}", accountId, errorMsg);
                 
                 if (result.isTokenExpired()) {
-                    return "令牌过期，请稍后重试或手动更新Cookie";
+                    return null;
                 }
 
                 if (errorMsg != null && errorMsg.contains("ORDER_ALREADY_DELIVERY")) {
@@ -446,6 +450,19 @@ public class OrderServiceImpl implements OrderService {
     public String consignDummyDeliveryWithConfig(Long accountId, String xyGoodsId, String orderId) {
         log.info("【账号{}】带配置凭证发货: xyGoodsId={}, orderId={}", accountId, xyGoodsId, orderId);
 
+        XianyuGoodsOrder existingOrder = orderMapper.selectByAccountIdAndOrderId(accountId, orderId);
+        if (existingOrder != null && existingOrder.getState() != null && existingOrder.getState() == 1) {
+            log.info("【账号{}】订单已发货，跳过重复执行: orderId={}", accountId, orderId);
+            return "订单已发货";
+        }
+        if (deliveryGuardService != null && !deliveryGuardService.tryAcquire(accountId, orderId)) {
+            log.warn("【账号{}】订单正在发货或已完成，跳过重复执行: orderId={}", accountId, orderId);
+            return null;
+        }
+
+        boolean completed = false;
+        try {
+
         OrderDetailFetcher.OrderDetailInfo orderDetail = orderDetailFetcher.fetch(accountId, xyGoodsId, orderId);
         String skuId = orderDetail != null ? orderDetail.skuId : null;
         XianyuGoodsAutoDeliveryConfig deliveryConfig = skuId == null ? null
@@ -506,6 +523,11 @@ public class OrderServiceImpl implements OrderService {
         String result = consignDummyDelivery(accountId, orderId, content, imageUrls);
 
         if (result != null) {
+            // 外部平台已确认发货，先固化幂等状态，避免后续本地写库异常导致重复调用外部 API。
+            if (deliveryGuardService != null) {
+                deliveryGuardService.markSuccess(accountId, orderId);
+            }
+            completed = true;
             XianyuGoodsOrder existing = orderMapper.selectByAccountIdAndOrderId(accountId, orderId);
             if (existing != null) {
                 orderMapper.updateStateAndContent(existing.getId(), 1, content);
@@ -526,5 +548,10 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return result;
+        } finally {
+            if (!completed && deliveryGuardService != null) {
+                deliveryGuardService.release(accountId, orderId);
+            }
+        }
     }
 }

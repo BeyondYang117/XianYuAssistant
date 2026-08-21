@@ -521,4 +521,31 @@ CREATE TABLE IF NOT EXISTS xianyu_human_intervention_record (
 
 CREATE INDEX IF NOT EXISTS idx_human_intervention_s_id ON xianyu_human_intervention_record(s_id);
 CREATE INDEX IF NOT EXISTS idx_human_intervention_end_time ON xianyu_human_intervention_record(end_time);
+CREATE INDEX IF NOT EXISTS idx_human_intervention_account_sid
+ON xianyu_human_intervention_record(xianyu_account_id, s_id);
 
+-- 可恢复的自动回复延时任务
+CREATE TABLE IF NOT EXISTS xianyu_auto_reply_delay_task (
+    task_key VARCHAR(300) PRIMARY KEY,
+    xianyu_account_id BIGINT NOT NULL,
+    s_id VARCHAR(200) NOT NULL,
+    messages_json TEXT NOT NULL,
+    execute_at BIGINT NOT NULL,
+    updated_time DATETIME DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_auto_reply_delay_execute_at
+ON xianyu_auto_reply_delay_task(execute_at);
+
+-- 发货租约：从领取卡密到调用外部发货 API 全程防止同一订单并发执行
+CREATE TABLE IF NOT EXISTS xianyu_delivery_lease (
+    xianyu_account_id BIGINT NOT NULL,
+    order_id VARCHAR(100) NOT NULL,
+    status TINYINT NOT NULL DEFAULT 0,
+    lease_until BIGINT NOT NULL,
+    updated_time DATETIME DEFAULT (datetime('now', 'localtime')),
+    PRIMARY KEY (xianyu_account_id, order_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_delivery_lease_until
+ON xianyu_delivery_lease(lease_until);

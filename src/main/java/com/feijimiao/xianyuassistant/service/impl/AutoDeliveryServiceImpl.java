@@ -13,6 +13,7 @@ import com.feijimiao.xianyuassistant.mapper.XianyuKamiUsageRecordMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.feijimiao.xianyuassistant.controller.dto.ManualExtractDeliveryRespDTO;
 import com.feijimiao.xianyuassistant.service.AutoDeliveryService;
+import com.feijimiao.xianyuassistant.service.DeliveryGuardService;
 import com.feijimiao.xianyuassistant.service.EmailNotifyService;
 import com.feijimiao.xianyuassistant.service.OrderService;
 import com.feijimiao.xianyuassistant.service.WebSocketService;
@@ -78,6 +79,9 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
 
     @Autowired
     private XianyuKamiUsageRecordMapper kamiUsageRecordMapper;
+
+    @Autowired(required = false)
+    private DeliveryGuardService deliveryGuardService;
     
     @Override
     public XianyuGoodsConfig getGoodsConfig(Long accountId, String xyGoodsId) {
@@ -325,8 +329,22 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
 
     @Override
     public void executeDelivery(Long recordId, Long accountId, String xyGoodsId, String sId, String orderId, String buyerUserName, boolean needHumanLikeDelay) {
+        boolean leaseAcquired = false;
+        boolean deliveryCompleted = false;
         try {
             log.info("【账号{}】开始执行自动发货: recordId={}, xyGoodsId={}, orderId={}", accountId, recordId, xyGoodsId, orderId);
+
+            XianyuGoodsOrder existingOrder = orderMapper.selectByAccountIdAndOrderId(accountId, orderId);
+            if (existingOrder != null && existingOrder.getState() != null && existingOrder.getState() == 1) {
+                log.info("【账号{}】订单已发货，跳过重复执行: orderId={}", accountId, orderId);
+                return;
+            }
+
+            if (deliveryGuardService != null && !deliveryGuardService.tryAcquire(accountId, orderId)) {
+                log.warn("【账号{}】订单正在发货或已完成，跳过重复执行: orderId={}", accountId, orderId);
+                return;
+            }
+            leaseAcquired = deliveryGuardService != null && orderId != null && !orderId.isBlank();
 
             XianyuGoodsConfig goodsConfig = goodsConfigMapper.selectByAccountAndGoodsId(accountId, xyGoodsId);
             if (goodsConfig == null || goodsConfig.getXianyuAutoDeliveryOn() == null || goodsConfig.getXianyuAutoDeliveryOn() != 1) {
@@ -456,6 +474,10 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
 
             if (anySuccess) {
                 updateRecordState(recordId, 1, allContent.toString(), null);
+                if (deliveryGuardService != null) {
+                    deliveryGuardService.markSuccess(accountId, orderId);
+                }
+                deliveryCompleted = true;
                 XianyuGoodsAutoDeliveryConfig baseConfig = autoDeliveryConfigMapper.findByAccountIdAndGoodsIdNoSku(accountId, xyGoodsId);
                 boolean autoConfirm = (baseConfig != null && baseConfig.getAutoConfirmShipment() != null && baseConfig.getAutoConfirmShipment() == 1);
                 if (autoConfirm) {
@@ -469,6 +491,10 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
             String failReason = "发货异常: " + e.getMessage();
             updateRecordState(recordId, -1, null, failReason);
             emailNotifyService.sendAutoDeliveryFailEmail(null, xyGoodsId, orderId, failReason);
+        } finally {
+            if (leaseAcquired && !deliveryCompleted) {
+                deliveryGuardService.release(accountId, orderId);
+            }
         }
     }
 
@@ -576,6 +602,8 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
 
     @Override
     public com.feijimiao.xianyuassistant.common.ResultObject<String> manualDelivery(Long xianyuAccountId, String orderId, String content) {
+        boolean leaseAcquired = false;
+        boolean deliveryCompleted = false;
         try {
             if (orderId == null || orderId.isEmpty()) {
                 return com.feijimiao.xianyuassistant.common.ResultObject.failed("订单ID不能为空");
@@ -588,6 +616,13 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
             if (record == null) {
                 return com.feijimiao.xianyuassistant.common.ResultObject.failed("订单记录不存在");
             }
+            if (record.getState() != null && record.getState() == 1) {
+                return com.feijimiao.xianyuassistant.common.ResultObject.failed("订单已发货，无需重复发货");
+            }
+            if (deliveryGuardService != null && !deliveryGuardService.tryAcquire(xianyuAccountId, orderId)) {
+                return com.feijimiao.xianyuassistant.common.ResultObject.failed("订单正在发货或已完成");
+            }
+            leaseAcquired = deliveryGuardService != null;
 
             String sId = record.getSid() != null ? record.getSid() : record.getBuyerUserId() + "@goofish";
             String cid = sId.replace("@goofish", "");
@@ -596,6 +631,10 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
             boolean success = webSocketService.sendMessage(xianyuAccountId, cid, toId, content);
             if (success) {
                 updateRecordState(record.getId(), 1, content, null);
+                if (deliveryGuardService != null) {
+                    deliveryGuardService.markSuccess(xianyuAccountId, orderId);
+                }
+                deliveryCompleted = true;
                 sentMessageSaveService.saveAiAssistantReply(xianyuAccountId, cid, toId, content, record.getXyGoodsId());
                 log.info("【账号{}】自定义发货成功: orderId={}", xianyuAccountId, orderId);
                 return com.feijimiao.xianyuassistant.common.ResultObject.success("自定义发货成功");
@@ -607,12 +646,18 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
         } catch (Exception e) {
             log.error("【账号{}】自定义发货异常: orderId={}", xianyuAccountId, orderId, e);
             return com.feijimiao.xianyuassistant.common.ResultObject.failed("自定义发货异常: " + e.getMessage());
+        } finally {
+            if (leaseAcquired && !deliveryCompleted) {
+                deliveryGuardService.release(xianyuAccountId, orderId);
+            }
         }
     }
 
     @Override
     public com.feijimiao.xianyuassistant.common.ResultObject<ManualExtractDeliveryRespDTO> manualExtractDelivery(
             Long xianyuAccountId, String orderId) {
+        boolean leaseAcquired = false;
+        boolean extractionCompleted = false;
         try {
             if (xianyuAccountId == null) {
                 return com.feijimiao.xianyuassistant.common.ResultObject.failed("闲鱼账号ID不能为空");
@@ -625,6 +670,13 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
             if (record == null) {
                 return com.feijimiao.xianyuassistant.common.ResultObject.failed("订单记录不存在");
             }
+            if (record.getState() != null && record.getState() == 1) {
+                return com.feijimiao.xianyuassistant.common.ResultObject.failed("订单已发货，无需重复提取");
+            }
+            if (deliveryGuardService != null && !deliveryGuardService.tryAcquire(xianyuAccountId, orderId)) {
+                return com.feijimiao.xianyuassistant.common.ResultObject.failed("订单正在发货或已完成");
+            }
+            leaseAcquired = deliveryGuardService != null;
 
             Long recordId = record.getId();
             String xyGoodsId = record.getXyGoodsId();
@@ -689,6 +741,10 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
             String content = String.join("\n", contents);
             updateRecordState(recordId, 1, content, null);
             orderMapper.updateDeliveryWay(recordId, 1);
+            if (deliveryGuardService != null) {
+                deliveryGuardService.markSuccess(xianyuAccountId, orderId);
+            }
+            extractionCompleted = true;
             log.info("【账号{}】✅ 手动提取发货内容成功: recordId={}, deliveryMode={}, 份数={}, reused={}",
                     xianyuAccountId, recordId, deliveryMode, contents.size(), reused);
 
@@ -715,6 +771,10 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
         } catch (Exception e) {
             log.error("【账号{}】手动提取发货内容异常: orderId={}", xianyuAccountId, orderId, e);
             return com.feijimiao.xianyuassistant.common.ResultObject.failed("手动提取发货内容异常: " + e.getMessage());
+        } finally {
+            if (leaseAcquired && !extractionCompleted) {
+                deliveryGuardService.release(xianyuAccountId, orderId);
+            }
         }
     }
 

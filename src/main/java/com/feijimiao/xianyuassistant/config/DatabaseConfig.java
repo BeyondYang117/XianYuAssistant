@@ -1,11 +1,14 @@
 package com.feijimiao.xianyuassistant.config;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
+import org.sqlite.SQLiteConfig;
+import org.sqlite.SQLiteDataSource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.util.FileCopyUtils;
 
 import javax.sql.DataSource;
@@ -30,10 +33,23 @@ public class DatabaseConfig {
     @Bean
     public DataSource dataSource() {
         log.info("初始化SQLite数据库...");
-        
-        DriverManagerDataSource dataSource = new DriverManagerDataSource();
-        dataSource.setDriverClassName("org.sqlite.JDBC");
-        dataSource.setUrl(databaseUrl);
+
+        SQLiteConfig sqliteConfig = new SQLiteConfig();
+        sqliteConfig.setJournalMode(SQLiteConfig.JournalMode.WAL);
+        sqliteConfig.setSynchronous(SQLiteConfig.SynchronousMode.NORMAL);
+        sqliteConfig.setBusyTimeout(10_000);
+
+        SQLiteDataSource sqliteDataSource = new SQLiteDataSource(sqliteConfig);
+        sqliteDataSource.setUrl(databaseUrl);
+
+        HikariConfig hikariConfig = new HikariConfig();
+        hikariConfig.setPoolName("sqlite-pool");
+        hikariConfig.setDataSource(sqliteDataSource);
+        hikariConfig.setMaximumPoolSize(4);
+        hikariConfig.setMinimumIdle(1);
+        hikariConfig.setConnectionTimeout(10_000);
+        hikariConfig.setValidationTimeout(3_000);
+        HikariDataSource dataSource = new HikariDataSource(hikariConfig);
         
         // 打印数据库文件路径
         String dbPath = databaseUrl.replace("jdbc:sqlite:", "");

@@ -1,0 +1,25 @@
+services:
+  xianyu-assistant:
+    image: ${IMAGE_REPOSITORY:-abu116/xianyu-help}:${IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME:-xianyu-assistant}
+    ports:
+      - "${HOST_PORT:-12400}:12400"
+    environment:
+      SERVER_PORT: "12400"
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx1024m}
+      TZ: ${TZ:-Asia/Shanghai}
+      JWT_SECRET: ${JWT_SECRET:?请设置 JWT_SECRET，或使用 deploy.sh 自动生成}
+    volumes:
+      - ${DATA_DIR:-./data/dbdata}:/app/dbdata
+      - ${LOG_DIR:-./data/logs}:/app/logs
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --show-error http://127.0.0.1:$${SERVER_PORT:-12400}/ > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s

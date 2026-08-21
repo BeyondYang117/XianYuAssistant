@@ -118,6 +118,17 @@ public class ChatMessageEventAutoDeliveryListener {
     }
 
     private Long createOrderRecord(Long accountId, Long xianyuGoodsId, ChatMessageData message) {
+        if (message.getOrderId() != null && !message.getOrderId().isBlank()) {
+            XianyuGoodsOrder existingOrder = orderMapper.selectByAccountIdAndOrderId(accountId, message.getOrderId());
+            if (existingOrder != null) {
+                if (existingOrder.getState() != null && existingOrder.getState() == 1) {
+                    log.info("【账号{}】订单已发货，跳过重复消息: orderId={}", accountId, message.getOrderId());
+                } else {
+                    log.info("【账号{}】复用待发货订单记录: recordId={}, orderId={}", accountId, existingOrder.getId(), message.getOrderId());
+                }
+                return existingOrder.getState() != null && existingOrder.getState() == 1 ? null : existingOrder.getId();
+            }
+        }
         XianyuGoodsOrder record = new XianyuGoodsOrder();
         record.setXianyuAccountId(accountId);
         record.setXianyuGoodsId(xianyuGoodsId);

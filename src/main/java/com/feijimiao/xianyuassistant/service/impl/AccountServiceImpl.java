@@ -12,6 +12,9 @@ import com.feijimiao.xianyuassistant.mapper.XianyuGoodsInfoMapper;
 import com.feijimiao.xianyuassistant.mapper.XianyuGoodsConfigMapper;
 import com.feijimiao.xianyuassistant.mapper.XianyuGoodsAutoDeliveryConfigMapper;
 import com.feijimiao.xianyuassistant.mapper.XianyuGoodsOrderMapper;
+import com.feijimiao.xianyuassistant.mapper.XianyuAutoReplyDelayTaskMapper;
+import com.feijimiao.xianyuassistant.mapper.XianyuDeliveryLeaseMapper;
+import com.feijimiao.xianyuassistant.mapper.XianyuHumanInterventionRecordMapper;
 import com.feijimiao.xianyuassistant.mapper.XianyuGoodsAutoReplyRecordMapper;
 import com.feijimiao.xianyuassistant.mapper.XianyuOperationLogMapper;
 import com.feijimiao.xianyuassistant.service.AccountService;
@@ -33,6 +36,15 @@ public class AccountServiceImpl implements AccountService {
 
     @Autowired
     private XianyuAccountMapper accountMapper;
+
+    @Autowired
+    private XianyuAutoReplyDelayTaskMapper autoReplyDelayTaskMapper;
+
+    @Autowired
+    private XianyuDeliveryLeaseMapper deliveryLeaseMapper;
+
+    @Autowired
+    private XianyuHumanInterventionRecordMapper humanInterventionRecordMapper;
 
     @Autowired
     private XianyuCookieMapper cookieMapper;
@@ -479,6 +491,10 @@ public class AccountServiceImpl implements AccountService {
             // 6. 删除自动回复记录数据
             int autoReplyRecordCount = autoReplyRecordMapper.deleteByAccountId(accountId);
             log.info("删除自动回复记录数据: accountId={}, 删除数量={}", accountId, autoReplyRecordCount);
+
+            humanInterventionRecordMapper.deleteByAccountId(accountId);
+            autoReplyDelayTaskMapper.deleteByAccountId(accountId);
+            deliveryLeaseMapper.deleteByAccountId(accountId);
             
             // 7. 删除操作记录数据
             int operationLogCount = operationLogMapper.deleteByAccountId(accountId);

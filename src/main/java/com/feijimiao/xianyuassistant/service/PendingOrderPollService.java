@@ -20,6 +20,9 @@ public class PendingOrderPollService {
     @Autowired
     private XianyuGoodsOrderMapper orderMapper;
 
+    @Autowired
+    private DeliveryGuardService deliveryGuardService;
+
     @SuppressWarnings("unchecked")
     public int deliverPendingOrders(Long accountId) {
         List<Map<String, Object>> pendingOrders = orderService.queryPendingOrders(accountId);
@@ -51,7 +54,21 @@ public class PendingOrderPollService {
                 if (itemId != null && !itemId.isEmpty()) {
                     result = orderService.consignDummyDeliveryWithConfig(accountId, itemId, orderId);
                 } else {
-                    result = orderService.consignDummyDelivery(accountId, orderId, null, null);
+                    if (!deliveryGuardService.tryAcquire(accountId, orderId)) {
+                        log.info("【账号{}】订单已有其他发货任务，跳过API兜底: orderId={}", accountId, orderId);
+                        continue;
+                    }
+                    try {
+                        result = orderService.consignDummyDelivery(accountId, orderId, null, null);
+                        if (result != null) {
+                            deliveryGuardService.markSuccess(accountId, orderId);
+                        } else {
+                            deliveryGuardService.release(accountId, orderId);
+                        }
+                    } catch (Exception e) {
+                        deliveryGuardService.release(accountId, orderId);
+                        throw e;
+                    }
                 }
                 if (result != null) {
                     log.info("【账号{}】凭证发货成功: orderId={}", accountId, orderId);

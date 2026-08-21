@@ -1,5 +1,7 @@
 package com.feijimiao.xianyuassistant.service.reply;
 
+import com.feijimiao.xianyuassistant.entity.XianyuHumanInterventionRecord;
+import com.feijimiao.xianyuassistant.mapper.XianyuHumanInterventionRecordMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -11,11 +13,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 /**
  * 人工接管管理器
  *
- * <p>使用内存 ConcurrentHashMap 管理会话的人工接管状态，替代原来基于数据库和延时任务的检查方式。</p>
+ * <p>数据库保存真实状态，内存 Map 仅用作快速路径，避免应用重启后接管状态丢失。</p>
  *
  * <h3>核心机制：</h3>
  * <ul>
@@ -39,6 +43,13 @@ public class HumanTakeoverManager {
 
     /** 默认接管时长（分钟） */
     private static final int DEFAULT_MINUTES = 10;
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    private final XianyuHumanInterventionRecordMapper interventionRecordMapper;
+
+    public HumanTakeoverManager(XianyuHumanInterventionRecordMapper interventionRecordMapper) {
+        this.interventionRecordMapper = interventionRecordMapper;
+    }
 
     /**
      * 人工接管状态映射
@@ -78,10 +89,18 @@ public class HumanTakeoverManager {
      * @param sId       会话ID
      * @param minutes   接管持续时长（分钟），到期后自动恢复AI回复
      */
-    public void takeover(Long accountId, String sId, int minutes) {
+    public void takeover(Long accountId, String xyGoodsId, String sId, int minutes) {
         String key = buildKey(accountId, sId);
         long now = System.currentTimeMillis();
         long expireTime = now + minutes * 60 * 1000L;
+
+        XianyuHumanInterventionRecord record = new XianyuHumanInterventionRecord();
+        record.setXianyuAccountId(accountId);
+        record.setXyGoodsId(xyGoodsId == null ? "" : xyGoodsId);
+        record.setSId(sId);
+        record.setEndTime(LocalDateTime.now().plusMinutes(minutes).format(FORMATTER));
+        interventionRecordMapper.insert(record);
+        interventionRecordMapper.deleteExpiredOrOlder(accountId, sId, record.getId());
         takeoverMap.put(key, expireTime);
         
         log.info("【账号{}】人工接管会话: sId={}, minutes={}, now={}, expireTime={}, duration={}ms", 
@@ -92,7 +111,7 @@ public class HumanTakeoverManager {
      * 标记会话为人工接管（使用默认时长10分钟）
      */
     public void takeover(Long accountId, String sId) {
-        takeover(accountId, sId, DEFAULT_MINUTES);
+        takeover(accountId, "", sId, DEFAULT_MINUTES);
     }
 
     /**
@@ -112,7 +131,20 @@ public class HumanTakeoverManager {
         log.debug("【账号{}】检查人工接管状态: sId={}, expireTime={}, now={}, isTakenOver={}", 
                 accountId, sId, expireTime, now, (expireTime != null && now <= expireTime));
         
-        if (expireTime == null) return false;
+        if (expireTime == null) {
+            XianyuHumanInterventionRecord active = interventionRecordMapper.findActive(accountId, sId);
+            if (active == null) {
+                return false;
+            }
+            try {
+                long persistedExpireTime = LocalDateTime.parse(active.getEndTime(), FORMATTER)
+                        .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+                takeoverMap.put(key, persistedExpireTime);
+            } catch (Exception e) {
+                log.debug("解析人工接管过期时间失败，以数据库查询结果为准: {}", active.getEndTime());
+            }
+            return true;
+        }
         if (now > expireTime) {
             takeoverMap.remove(key, expireTime);
             log.info("【账号{}】人工接管已过期，自动恢复AI回复: sId={}", accountId, sId);
@@ -141,6 +173,7 @@ public class HumanTakeoverManager {
                     it.remove();
                 }
             }
+            interventionRecordMapper.cleanExpired();
         } catch (Exception e) {
             log.warn("清理过期接管标记失败: {}", e.getMessage());
         }
