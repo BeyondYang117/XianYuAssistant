@@ -4,6 +4,8 @@ import com.feijimiao.xianyuassistant.common.ResultObject;
 import com.feijimiao.xianyuassistant.controller.dto.MsgContextReqDTO;
 import com.feijimiao.xianyuassistant.controller.dto.MsgListReqDTO;
 import com.feijimiao.xianyuassistant.controller.dto.MsgListRespDTO;
+import com.feijimiao.xianyuassistant.controller.dto.ConversationListReqDTO;
+import com.feijimiao.xianyuassistant.controller.dto.ConversationListRespDTO;
 import com.feijimiao.xianyuassistant.service.ChatMessageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +41,19 @@ public class MsgController {
             return ResultObject.failed("查询消息列表失败: " + e.getMessage());
         }
     }
+
+    /**
+     * 按会话分页查询消息工作台。
+     */
+    @PostMapping("/conversations")
+    public ResultObject<ConversationListRespDTO> getConversationList(@RequestBody ConversationListReqDTO reqDTO) {
+        try {
+            return chatMessageService.getConversationList(reqDTO);
+        } catch (Exception e) {
+            log.error("查询会话列表失败", e);
+            return ResultObject.failed("查询会话列表失败: " + e.getMessage());
+        }
+    }
     
     /**
      * 根据会话ID获取上下文消息（最近50条）
@@ -57,4 +72,3 @@ public class MsgController {
         }
     }
 }
-

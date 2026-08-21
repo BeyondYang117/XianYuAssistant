@@ -2,6 +2,74 @@
    Messages — Liquid Glass Design System
    ============================================================ */
 
+.messages-workbench {
+  --msg-border: rgba(60, 60, 67, 0.12);
+  --msg-muted: #86868b;
+  --msg-secondary: #5f6065;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  box-sizing: border-box;
+  color: #1d1d1f;
+}
+
+.workbench-toolbar {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex: none;
+  margin-bottom: 10px;
+}
+
+.workbench-toolbar__title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.workbench-toolbar__title h1 { margin: 0; font-size: 18px; font-weight: 650; }
+.workbench-toolbar__title p { margin: 2px 0 0; color: var(--msg-muted); font-size: 11px; }
+.workbench-toolbar__icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; background: rgba(10,132,255,.1); color: #0a84ff; }
+.workbench-toolbar__icon svg { width: 18px; height: 18px; }
+.workbench-toolbar__actions { display: flex; align-items: center; gap: 8px; }
+.workbench-account { position: relative; }
+.workbench-account select { appearance: none; height: 34px; min-width: 150px; padding: 0 32px 0 11px; border: 1px solid var(--msg-border); border-radius: 8px; background: rgba(255,255,255,.8); color: inherit; outline: 0; }
+.workbench-account svg { position: absolute; right: 10px; top: 10px; width: 14px; height: 14px; pointer-events: none; color: var(--msg-muted); }
+.workbench-icon-button { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--msg-border); border-radius: 8px; background: rgba(255,255,255,.8); color: #0a84ff; cursor: pointer; }
+.workbench-icon-button svg { width: 16px; height: 16px; }.workbench-icon-button.loading svg { animation: workbench-spin .7s linear infinite; }
+@keyframes workbench-spin { to { transform: rotate(360deg); } }
+
+.workbench-filterbar { min-height: 42px; display: flex; align-items: center; gap: 8px; flex: none; margin-bottom: 10px; }
+.workbench-search { width: min(360px, 42vw); height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border: 1px solid var(--msg-border); border-radius: 8px; background: #fff; }
+.workbench-search svg { width: 15px; height: 15px; flex: none; color: var(--msg-muted); }.workbench-search input { min-width: 0; flex: 1; border: 0; outline: 0; font: inherit; font-size: 12px; }.workbench-search button { border: 0; background: transparent; color: #0a84ff; cursor: pointer; font-size: 11px; }
+.workbench-filter { height: 32px; padding: 0 11px; border: 1px solid var(--msg-border); border-radius: 8px; background: rgba(255,255,255,.7); color: var(--msg-secondary); cursor: pointer; font-size: 12px; }.workbench-filter.active { border-color: rgba(10,132,255,.35); background: rgba(10,132,255,.09); color: #0a84ff; }.workbench-filter span { margin-left: 4px; font-size: 10px; }
+.workbench-filterbar__hint { margin-left: auto; color: var(--msg-muted); font-size: 11px; }
+
+.workbench-body { min-height: 0; flex: 1; display: grid; grid-template-columns: 260px 340px minmax(380px, 1fr); border: 1px solid var(--msg-border); border-radius: 8px; overflow: hidden; background: rgba(255,255,255,.75); box-shadow: 0 8px 28px rgba(0,0,0,.06); }
+.workbench-goods,.workbench-conversations,.workbench-chat { min-width: 0; min-height: 0; position: relative; }
+.workbench-goods { border-right: 1px solid var(--msg-border); transition: width .18s ease; }.workbench-goods.collapsed { width: 40px; }.workbench-goods__inner { height: 100%; overflow: hidden; }.workbench-goods__inner > * { height: 100%; display: flex; flex-direction: column; }
+.workbench-goods__toggle { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 26px; height: 48px; padding: 0; border: 0; border-left: 1px solid var(--msg-border); background: rgba(255,255,255,.94); color: var(--msg-muted); cursor: pointer; font-size: 11px; writing-mode: vertical-rl; }
+.workbench-body:has(.workbench-goods.collapsed) { grid-template-columns: 40px 340px minmax(380px, 1fr); }
+.workbench-conversations { display: flex; flex-direction: column; border-right: 1px solid var(--msg-border); }.workbench-section-title { height: 49px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--msg-border); font-size: 13px; }.workbench-section-title span { color: var(--msg-muted); font-size: 11px; }
+.workbench-conversations .conversation-list { flex: 1; min-height: 0; }
+.workbench-pagination { min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 4px; border-top: 1px solid var(--msg-border); }.workbench-pagination button { min-width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--msg-secondary); cursor: pointer; }.workbench-pagination button.active { color: #fff; background: #0a84ff; }.workbench-pagination button:disabled { opacity: .3; cursor: default; }
+.workbench-chat { background: #fff; }.workbench-mobile-back { display: none; }
+
+@media (max-width: 1180px) {
+  .workbench-body { grid-template-columns: 220px 310px minmax(340px, 1fr); }
+  .workbench-body:has(.workbench-goods.collapsed) { grid-template-columns: 40px 310px minmax(340px, 1fr); }
+}
+
+@media (max-width: 760px) {
+  .messages-workbench { padding: 0; }
+  .workbench-toolbar { min-height: 48px; margin: 0; padding: 0 12px; border-bottom: 1px solid var(--msg-border); }
+  .workbench-toolbar__icon { display: none; }.workbench-toolbar__title h1 { font-size: 15px; }.workbench-account select { min-width: 105px; max-width: 135px; }
+  .workbench-filterbar { padding: 8px; margin: 0; overflow-x: auto; border-bottom: 1px solid var(--msg-border); }.workbench-search { width: auto; min-width: 220px; flex: 1; }.workbench-filterbar__hint { display: none; }
+  .workbench-body { display: block; border: 0; border-radius: 0; box-shadow: none; position: relative; }
+  .workbench-goods { display: none; }.workbench-conversations { position: absolute; inset: 0; border: 0; background: #fff; }.workbench-conversations.mobile-hidden { display: none; }
+  .workbench-chat { display: none; position: absolute; inset: 0; padding-top: 38px; }.workbench-chat.mobile-visible { display: block; }
+  .workbench-mobile-back { display: block; position: absolute; z-index: 3; top: 0; left: 0; width: 100%; height: 38px; padding: 0 12px; border: 0; border-bottom: 1px solid var(--msg-border); background: #fff; color: #0a84ff; text-align: left; }
+}
+
 .messages {
   --d-bg: transparent;
   --d-surface: rgba(255,255,255,0.55);

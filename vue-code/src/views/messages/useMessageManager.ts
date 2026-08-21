@@ -1,10 +1,10 @@
 import { ref, computed, nextTick } from 'vue'
 import { getAccountList } from '@/api/account'
-import { getMessageList } from '@/api/message'
+import { getConversationList } from '@/api/message'
 import { getGoodsList } from '@/api/goods'
 import { showInfo } from '@/utils'
 import type { Account } from '@/types'
-import type { ChatMessage } from '@/api/message'
+import type { ConversationSummary } from '@/api/message'
 import type { GoodsItemWithConfig } from '@/api/goods'
 
 export function useMessageManager() {
@@ -13,11 +13,13 @@ export function useMessageManager() {
   const accounts = ref<Account[]>([])
   const selectedAccountId = ref<number | null>(null)
   const goodsIdFilter = ref('')
-  const messageList = ref<ChatMessage[]>([])
+  const conversationList = ref<ConversationSummary[]>([])
+  const selectedConversation = ref<ConversationSummary | null>(null)
   const currentPage = ref(1)
   const pageSize = ref(20)
   const total = ref(0)
-  const filterCurrentAccount = ref(false)
+  const keyword = ref('')
+  const needsReplyOnly = ref(false)
 
   // 商品列表
   const goodsList = ref<GoodsItemWithConfig[]>([])
@@ -25,11 +27,6 @@ export function useMessageManager() {
   const goodsTotal = ref(0)
   const goodsLoading = ref(false)
   const goodsListRef = ref<HTMLElement | null>(null)
-
-  // 手机端
-  const isMobile = ref(false)
-  const mobileView = ref<'goods' | 'messages'>('goods')
-  const selectedGoodsForMobile = ref<GoodsItemWithConfig | null>(null)
 
   // 计算属性
   const totalPages = computed(() => Math.ceil(total.value / pageSize.value))
@@ -40,57 +37,6 @@ export function useMessageManager() {
     return account ? account.unb : ''
   })
 
-  // 判断是否为用户消息
-  const isUserMessage = (row: ChatMessage) => {
-    return row.senderUserId !== getCurrentAccountUnb.value
-  }
-
-  // 消息类型
-  const getContentTypeText = (contentType: number, row: ChatMessage) => {
-    if (contentType === 999) return '手动回复'
-    if (contentType === 997) return '图片回复'
-    if (contentType === 888) return '自动回复'
-    if (contentType === 887) return '自动回复图片'
-    if (!isUserMessage(row)) return '我发送的'
-    if (contentType === 1) return '用户消息'
-    return `系统消息(${contentType})`
-  }
-
-  const getContentTypeColor = (contentType: number, row: ChatMessage) => {
-    if (contentType === 999 || contentType === 997) return '#5856d6'
-    if (contentType === 888 || contentType === 887) return '#af52de'
-    if (!isUserMessage(row)) return '#007aff'
-    if (contentType === 1) return '#34c759'
-    return '#ff9500'
-  }
-
-  const getContentTypeBg = (contentType: number, row: ChatMessage) => {
-    if (contentType === 999 || contentType === 997) return 'rgba(88, 86, 214, 0.1)'
-    if (contentType === 888 || contentType === 887) return 'rgba(175, 82, 222, 0.1)'
-    if (!isUserMessage(row)) return 'rgba(0, 122, 255, 0.1)'
-    if (contentType === 1) return 'rgba(52, 199, 89, 0.1)'
-    return 'rgba(255, 149, 0, 0.1)'
-  }
-
-  // 格式化消息时间
-  const formatMessageTime = (timestamp: string | number) => {
-    const ts = Number(timestamp)
-    if (!ts || isNaN(ts)) return '-'
-    const date = new Date(ts)
-    if (isNaN(date.getTime())) return '-'
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-    if (diff < 60000) return '刚刚'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
-    return date.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
 
   // 加载账号列表
   const loadAccounts = async () => {
@@ -125,29 +71,24 @@ export function useMessageManager() {
         xianyuAccountId: selectedAccountId.value,
         pageNum: currentPage.value,
         pageSize: pageSize.value,
-        filterCurrentAccount: filterCurrentAccount.value
+        needsReplyOnly: needsReplyOnly.value,
+        keyword: keyword.value.trim()
       }
       if (goodsIdFilter.value) {
         params.xyGoodsId = goodsIdFilter.value
       }
-      const response = await getMessageList(params)
+      const response = await getConversationList(params)
       if (response.code === 0 || response.code === 200) {
         const newList = response.data?.list || []
         const newTotal = response.data?.totalCount || 0
 
-        if (silent && messageList.value.length > 0) {
-          const existingIds = new Set(messageList.value.map(m => m.id))
-          const newItems = newList.filter((m: ChatMessage) => !existingIds.has(m.id))
-          if (newItems.length > 0) {
-            newItems.forEach((m: ChatMessage) => { m.isNew = true })
-            messageList.value = [...newItems, ...messageList.value.map(m => ({ ...m, isNew: false }))]
-            total.value = newTotal
-          } else if (newTotal !== total.value) {
-            total.value = newTotal
-          }
-        } else {
-          messageList.value = newList
-          total.value = newTotal
+        conversationList.value = newList
+        total.value = newTotal
+        if (selectedConversation.value) {
+          selectedConversation.value = newList.find(item => item.sid === selectedConversation.value?.sid)
+            || (silent ? selectedConversation.value : newList[0] || null)
+        } else if (!silent && newList.length) {
+          selectedConversation.value = newList[0] || null
         }
       } else {
         throw new Error(response.msg || '获取消息列表失败')
@@ -155,7 +96,7 @@ export function useMessageManager() {
     } catch (error: any) {
       console.error('加载消息列表失败:', error)
       if (!silent) {
-        messageList.value = []
+        conversationList.value = []
       }
     } finally {
       loading.value = false
@@ -220,12 +161,13 @@ export function useMessageManager() {
     currentPage.value = 1
     goodsCurrentPage.value = 1
     goodsIdFilter.value = ''
+    selectedConversation.value = null
     loadMessages()
     loadGoodsList()
   }
 
   // 选择商品筛选
-  const selectGoods = (goodsId: string, goods?: GoodsItemWithConfig) => {
+  const selectGoods = (goodsId: string) => {
     if (goodsIdFilter.value === goodsId) {
       clearFilter()
     } else {
@@ -233,16 +175,7 @@ export function useMessageManager() {
       showInfo('已筛选该商品的消息')
       currentPage.value = 1
       loadMessages()
-      if (isMobile.value && goods) {
-        selectedGoodsForMobile.value = goods
-        mobileView.value = 'messages'
-      }
     }
-  }
-
-  // 手机端返回
-  const goBackToGoods = () => {
-    mobileView.value = 'goods'
   }
 
   // 清除筛选
@@ -251,6 +184,10 @@ export function useMessageManager() {
     showInfo('已取消筛选')
     currentPage.value = 1
     loadMessages()
+  }
+
+  const selectConversation = (conversation: ConversationSummary) => {
+    selectedConversation.value = conversation
   }
 
   // 分页
@@ -271,20 +208,19 @@ export function useMessageManager() {
     accounts,
     selectedAccountId,
     goodsIdFilter,
-    messageList,
+    conversationList,
+    selectedConversation,
     currentPage,
     pageSize,
     total,
     totalPages,
-    filterCurrentAccount,
+    keyword,
+    needsReplyOnly,
     goodsList,
     goodsCurrentPage,
     goodsTotal,
     goodsLoading,
     goodsListRef,
-    isMobile,
-    mobileView,
-    selectedGoodsForMobile,
     getCurrentAccountUnb,
     loadAccounts,
     loadMessages,
@@ -292,14 +228,9 @@ export function useMessageManager() {
     handleGoodsScroll,
     handleAccountChange,
     selectGoods,
-    goBackToGoods,
     clearFilter,
+    selectConversation,
     handlePageChange,
-    isUserMessage,
-    getContentTypeText,
-    getContentTypeColor,
-    getContentTypeBg,
-    formatMessageTime,
     handleImgError
   }
 }

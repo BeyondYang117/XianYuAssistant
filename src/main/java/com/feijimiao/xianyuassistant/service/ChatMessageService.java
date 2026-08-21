@@ -5,6 +5,8 @@ import com.feijimiao.xianyuassistant.entity.XianyuChatMessage;
 import com.feijimiao.xianyuassistant.controller.dto.MsgContextReqDTO;
 import com.feijimiao.xianyuassistant.controller.dto.MsgListReqDTO;
 import com.feijimiao.xianyuassistant.controller.dto.MsgListRespDTO;
+import com.feijimiao.xianyuassistant.controller.dto.ConversationListReqDTO;
+import com.feijimiao.xianyuassistant.controller.dto.ConversationListRespDTO;
 import java.util.List;
 
 /**
@@ -48,4 +50,6 @@ public interface ChatMessageService {
      * @return 消息列表
      */
     ResultObject<?> getContextMessages(MsgContextReqDTO reqDTO);
+
+    ResultObject<ConversationListRespDTO> getConversationList(ConversationListReqDTO reqDTO);
 }

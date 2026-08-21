@@ -1,6 +1,7 @@
 package com.feijimiao.xianyuassistant.mapper;
 
 import com.feijimiao.xianyuassistant.entity.XianyuChatMessage;
+import com.feijimiao.xianyuassistant.mapper.projection.ChatConversationRow;
 import org.apache.ibatis.annotations.*;
 
 import java.util.List;
@@ -132,4 +133,86 @@ public interface XianyuChatMessageMapper {
             "ORDER BY message_time DESC " +
             "LIMIT #{limit} OFFSET #{offset}")
     List<XianyuChatMessage> findRecentBySId(@Param("sId") String sId, @Param("limit") int limit, @Param("offset") int offset);
+
+    /**
+     * 按会话聚合工作台列表。SQLite 3.25+ 支持这里使用的窗口函数。
+     */
+    @Select("<script>" +
+            "WITH conversation_messages AS (" +
+            " SELECT m.*," +
+            " ROW_NUMBER() OVER (PARTITION BY m.s_id ORDER BY m.message_time DESC, m.id DESC) AS rn," +
+            " COUNT(*) OVER (PARTITION BY m.s_id) AS message_count" +
+            " FROM xianyu_chat_message m" +
+            " WHERE m.xianyu_account_id = #{accountId}" +
+            " AND m.s_id IS NOT NULL AND m.s_id != ''" +
+            " <if test='xyGoodsId != null and xyGoodsId != \"\"'>" +
+            " AND m.xy_goods_id = #{xyGoodsId}" +
+            " </if>" +
+            "), latest AS (SELECT * FROM conversation_messages WHERE rn = 1)" +
+            " SELECT" +
+            " l.s_id AS sId," +
+            " COALESCE((SELECT p.sender_user_id FROM xianyu_chat_message p" +
+            "   WHERE p.xianyu_account_id = #{accountId} AND p.s_id = l.s_id" +
+            "   AND p.sender_user_id != #{currentAccountUnb} AND p.content_type IN (1, 2)" +
+            "   ORDER BY p.message_time DESC, p.id DESC LIMIT 1), l.sender_user_id) AS peerUserId," +
+            " COALESCE((SELECT p.sender_user_name FROM xianyu_chat_message p" +
+            "   WHERE p.xianyu_account_id = #{accountId} AND p.s_id = l.s_id" +
+            "   AND p.sender_user_id != #{currentAccountUnb} AND p.content_type IN (1, 2)" +
+            "   ORDER BY p.message_time DESC, p.id DESC LIMIT 1), l.sender_user_name, '用户') AS peerUserName," +
+            " COALESCE(l.xy_goods_id, (SELECT g.xy_goods_id FROM xianyu_chat_message g" +
+            "   WHERE g.xianyu_account_id = #{accountId} AND g.s_id = l.s_id AND g.xy_goods_id IS NOT NULL AND g.xy_goods_id != ''" +
+            "   ORDER BY g.message_time DESC, g.id DESC LIMIT 1)) AS xyGoodsId," +
+            " l.id AS lastMessageId, l.content_type AS lastContentType," +
+            " l.msg_content AS lastMessage, l.message_time AS lastMessageTime," +
+            " l.sender_user_id AS lastSenderUserId, l.message_count AS messageCount," +
+            " CASE WHEN l.sender_user_id != #{currentAccountUnb} AND l.content_type IN (1, 2) THEN 1 ELSE 0 END AS needsReply" +
+            " FROM latest l WHERE 1 = 1" +
+            " <if test='needsReplyOnly'>" +
+            " AND l.sender_user_id != #{currentAccountUnb} AND l.content_type IN (1, 2)" +
+            " </if>" +
+            " <if test='keyword != null and keyword != \"\"'>" +
+            " AND EXISTS (SELECT 1 FROM xianyu_chat_message s" +
+            "   WHERE s.xianyu_account_id = #{accountId} AND s.s_id = l.s_id" +
+            "   AND (s.sender_user_name LIKE '%' || #{keyword} || '%'" +
+            "     OR s.msg_content LIKE '%' || #{keyword} || '%'" +
+            "     OR s.xy_goods_id LIKE '%' || #{keyword} || '%'))" +
+            " </if>" +
+            " ORDER BY l.message_time DESC, l.id DESC" +
+            " LIMIT #{limit} OFFSET #{offset}" +
+            "</script>")
+    List<ChatConversationRow> findConversationsByPage(@Param("accountId") Long accountId,
+                                                       @Param("currentAccountUnb") String currentAccountUnb,
+                                                       @Param("xyGoodsId") String xyGoodsId,
+                                                       @Param("keyword") String keyword,
+                                                       @Param("needsReplyOnly") boolean needsReplyOnly,
+                                                       @Param("limit") int limit,
+                                                       @Param("offset") int offset);
+
+    @Select("<script>" +
+            "WITH conversation_messages AS (" +
+            " SELECT m.*, ROW_NUMBER() OVER (PARTITION BY m.s_id ORDER BY m.message_time DESC, m.id DESC) AS rn" +
+            " FROM xianyu_chat_message m" +
+            " WHERE m.xianyu_account_id = #{accountId}" +
+            " AND m.s_id IS NOT NULL AND m.s_id != ''" +
+            " <if test='xyGoodsId != null and xyGoodsId != \"\"'>" +
+            " AND m.xy_goods_id = #{xyGoodsId}" +
+            " </if>" +
+            "), latest AS (SELECT * FROM conversation_messages WHERE rn = 1)" +
+            " SELECT COUNT(*) FROM latest l WHERE 1 = 1" +
+            " <if test='needsReplyOnly'>" +
+            " AND l.sender_user_id != #{currentAccountUnb} AND l.content_type IN (1, 2)" +
+            " </if>" +
+            " <if test='keyword != null and keyword != \"\"'>" +
+            " AND EXISTS (SELECT 1 FROM xianyu_chat_message s" +
+            "   WHERE s.xianyu_account_id = #{accountId} AND s.s_id = l.s_id" +
+            "   AND (s.sender_user_name LIKE '%' || #{keyword} || '%'" +
+            "     OR s.msg_content LIKE '%' || #{keyword} || '%'" +
+            "     OR s.xy_goods_id LIKE '%' || #{keyword} || '%'))" +
+            " </if>" +
+            "</script>")
+    int countConversations(@Param("accountId") Long accountId,
+                           @Param("currentAccountUnb") String currentAccountUnb,
+                           @Param("xyGoodsId") String xyGoodsId,
+                           @Param("keyword") String keyword,
+                           @Param("needsReplyOnly") boolean needsReplyOnly);
 }

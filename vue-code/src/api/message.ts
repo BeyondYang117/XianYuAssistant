@@ -32,6 +32,43 @@ export interface MessageListResponse {
   pageSize: number;
 }
 
+export interface ConversationSummary {
+  sid: string;
+  peerUserId: string;
+  peerUserName: string;
+  xyGoodsId?: string;
+  lastMessageId: number;
+  lastContentType: number;
+  lastMessage?: string;
+  lastMessageTime: string | number;
+  lastSenderUserId: string;
+  messageCount: number;
+  needsReply: boolean;
+}
+
+export interface ConversationListResponse {
+  list: ConversationSummary[];
+  totalCount: number;
+  totalPage: number;
+  pageNum: number;
+  pageSize: number;
+}
+
+export function getConversationList(data: {
+  xianyuAccountId: number;
+  xyGoodsId?: string;
+  keyword?: string;
+  needsReplyOnly?: boolean;
+  pageNum?: number;
+  pageSize?: number;
+}) {
+  return request<ConversationListResponse>({
+    url: '/msg/conversations',
+    method: 'POST',
+    data
+  })
+}
+
 // 获取消息列表
 export function getMessageList(data: {
   xianyuAccountId: number;
