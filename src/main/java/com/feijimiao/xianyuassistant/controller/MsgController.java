@@ -6,6 +6,7 @@ import com.feijimiao.xianyuassistant.controller.dto.MsgListReqDTO;
 import com.feijimiao.xianyuassistant.controller.dto.MsgListRespDTO;
 import com.feijimiao.xianyuassistant.controller.dto.ConversationListReqDTO;
 import com.feijimiao.xianyuassistant.controller.dto.ConversationListRespDTO;
+import com.feijimiao.xianyuassistant.controller.dto.UnreadMessagesReqDTO;
 import com.feijimiao.xianyuassistant.service.ChatMessageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,5 +71,15 @@ public class MsgController {
             log.error("查询上下文消息失败", e);
             return ResultObject.failed("查询上下文消息失败: " + e.getMessage());
         }
+    }
+
+    @PostMapping("/unread")
+    public ResultObject<?> getUnreadMessages(@RequestBody UnreadMessagesReqDTO reqDTO) {
+        return chatMessageService.getUnreadMessages(reqDTO == null ? null : reqDTO.getXianyuAccountId(), 50);
+    }
+
+    @PostMapping("/read")
+    public ResultObject<?> markConversationRead(@RequestBody MsgContextReqDTO reqDTO) {
+        return chatMessageService.markConversationRead(reqDTO);
     }
 }

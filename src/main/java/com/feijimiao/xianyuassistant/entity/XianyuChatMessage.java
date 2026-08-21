@@ -39,4 +39,5 @@ public class XianyuChatMessage {
     // 时间信息
     private Long messageTime;              // 消息时间戳（毫秒，字段1.5）
     private LocalDateTime createTime;      // 创建时间
+    private Integer readStatus = 1;       // 0:未读买家消息 1:已读/非买家消息
 }

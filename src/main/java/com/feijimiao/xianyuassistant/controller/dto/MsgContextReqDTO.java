@@ -12,6 +12,7 @@ public class MsgContextReqDTO {
      * 会话ID
      */
     private String sid;
+    private Long xianyuAccountId;
     
     /**
      * 限制条数（默认20）

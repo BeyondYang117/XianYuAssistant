@@ -19,12 +19,12 @@ public interface XianyuChatMessageMapper {
             "xianyu_account_id, lwp, pnm_id, s_id, " +
             "content_type, msg_content, " +
             "sender_user_name, sender_user_id, sender_app_v, sender_os_type, " +
-            "reminder_url, xy_goods_id, complete_msg, message_time" +
+            "reminder_url, xy_goods_id, complete_msg, message_time, read_status" +
             ") VALUES (" +
             "#{xianyuAccountId}, #{lwp}, #{pnmId}, #{sId}, " +
             "#{contentType}, #{msgContent}, " +
             "#{senderUserName}, #{senderUserId}, #{senderAppV}, #{senderOsType}, " +
-            "#{reminderUrl}, #{xyGoodsId}, #{completeMsg}, #{messageTime}" +
+            "#{reminderUrl}, #{xyGoodsId}, #{completeMsg}, #{messageTime}, COALESCE(#{readStatus}, 1)" +
             ")")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(XianyuChatMessage message);
@@ -215,4 +215,25 @@ public interface XianyuChatMessageMapper {
                            @Param("xyGoodsId") String xyGoodsId,
                            @Param("keyword") String keyword,
                            @Param("needsReplyOnly") boolean needsReplyOnly);
+
+    @Select("SELECT COUNT(*) FROM xianyu_chat_message m " +
+            "JOIN xianyu_account a ON a.id = m.xianyu_account_id " +
+            "WHERE m.xianyu_account_id = #{accountId} AND m.s_id IS NOT NULL AND m.s_id != '' " +
+            "AND m.sender_user_id != a.unb AND m.content_type IN (1, 2) AND COALESCE(m.read_status, 1) = 0")
+    int countUnread(@Param("accountId") Long accountId);
+
+    @Select("SELECT m.s_id AS sId, m.xianyu_account_id AS accountId, m.sender_user_name AS peerUserName, " +
+            "m.sender_user_id AS peerUserId, m.msg_content AS lastMessage, m.id AS lastMessageId, " +
+            "m.message_time AS lastMessageTime, m.xy_goods_id AS xyGoodsId " +
+            "FROM xianyu_chat_message m JOIN xianyu_account a ON a.id = m.xianyu_account_id " +
+            "WHERE m.xianyu_account_id = #{accountId} AND m.s_id IS NOT NULL AND m.s_id != '' " +
+            "AND m.sender_user_id != a.unb AND m.content_type IN (1, 2) AND COALESCE(m.read_status, 1) = 0 " +
+            "ORDER BY m.message_time DESC, m.id DESC LIMIT #{limit}")
+    List<com.feijimiao.xianyuassistant.mapper.projection.UnreadMessageRow> findUnread(@Param("accountId") Long accountId, @Param("limit") int limit);
+
+    @Update("UPDATE xianyu_chat_message SET read_status = 1 " +
+            "WHERE xianyu_account_id = #{accountId} AND s_id = #{sId} AND COALESCE(read_status, 1) = 0 " +
+            "AND sender_user_id != (SELECT unb FROM xianyu_account WHERE id = #{accountId}) " +
+            "AND content_type IN (1, 2)")
+    int markRead(@Param("accountId") Long accountId, @Param("sId") String sId);
 }

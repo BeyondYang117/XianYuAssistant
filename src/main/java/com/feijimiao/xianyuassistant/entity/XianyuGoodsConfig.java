@@ -52,7 +52,17 @@ public class XianyuGoodsConfig {
     private Integer humanInterventionOn;
 
     private Integer humanInterventionMinutes;
-    
+
+    /**
+     * 拍下未付款自动改价开关：1-开启，0-关闭，默认关闭
+     */
+    private Integer autoAdjustPriceOn;
+
+    /**
+     * 改价目标总价（元，十进制字符串，最多两位小数）
+     */
+    private String adjustTargetPrice;
+
     /**
      * 固定资料（用于AI自动回复）
      */

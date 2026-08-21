@@ -14,7 +14,10 @@ import com.feijimiao.xianyuassistant.controller.dto.MsgListRespDTO;
 import com.feijimiao.xianyuassistant.controller.dto.ConversationListReqDTO;
 import com.feijimiao.xianyuassistant.controller.dto.ConversationListRespDTO;
 import com.feijimiao.xianyuassistant.controller.dto.ConversationSummaryDTO;
+import com.feijimiao.xianyuassistant.controller.dto.UnreadMessageDTO;
+import com.feijimiao.xianyuassistant.controller.dto.UnreadMessagesRespDTO;
 import com.feijimiao.xianyuassistant.mapper.projection.ChatConversationRow;
+import com.feijimiao.xianyuassistant.mapper.projection.UnreadMessageRow;
 import com.feijimiao.xianyuassistant.service.ChatMessageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -183,6 +186,37 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         response.setPageSize(pageSize);
         response.setTotalPage((int) Math.ceil((double) totalCount / pageSize));
         return ResultObject.success(response);
+    }
+
+    @Override
+    public ResultObject<UnreadMessagesRespDTO> getUnreadMessages(Long accountId, int limit) {
+        if (accountId == null) return ResultObject.validateFailed("xianyuAccountId不能为空");
+        int safeLimit = Math.max(1, Math.min(limit, 100));
+        UnreadMessagesRespDTO response = new UnreadMessagesRespDTO();
+        response.setUnreadCount(chatMessageMapper.countUnread(accountId));
+        List<UnreadMessageDTO> messages = chatMessageMapper.findUnread(accountId, safeLimit).stream().map(row -> {
+            UnreadMessageDTO dto = new UnreadMessageDTO();
+            dto.setAccountId(row.getAccountId());
+            dto.setSId(row.getSId());
+            dto.setPeerUserId(row.getPeerUserId());
+            dto.setPeerUserName(row.getPeerUserName());
+            dto.setLastMessage(row.getLastMessage());
+            dto.setLastMessageId(row.getLastMessageId());
+            dto.setLastMessageTime(row.getLastMessageTime());
+            dto.setXyGoodsId(row.getXyGoodsId());
+            return dto;
+        }).toList();
+        response.setMessages(messages);
+        return ResultObject.success(response);
+    }
+
+    @Override
+    public ResultObject<?> markConversationRead(MsgContextReqDTO reqDTO) {
+        if (reqDTO == null || reqDTO.getXianyuAccountId() == null || reqDTO.getSid() == null || reqDTO.getSid().isBlank()) {
+            return ResultObject.validateFailed("xianyuAccountId和sid不能为空");
+        }
+        chatMessageMapper.markRead(reqDTO.getXianyuAccountId(), reqDTO.getSid());
+        return ResultObject.success(null);
     }
 
     ConversationSummaryDTO toConversationSummary(ChatConversationRow row) {

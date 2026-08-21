@@ -23,4 +23,14 @@ public class ItemWithConfigDTO {
     private Integer autoDeliveryType;
     
     private String autoDeliveryContent;
+
+    /**
+     * 拍下未付款自动改价开关：1-开启，0-关闭
+     */
+    private Integer autoAdjustPriceOn;
+
+    /**
+     * 改价目标总价（元）
+     */
+    private String adjustTargetPrice;
 }

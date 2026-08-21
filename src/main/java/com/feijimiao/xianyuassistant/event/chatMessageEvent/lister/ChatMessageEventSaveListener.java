@@ -4,6 +4,8 @@ import com.feijimiao.xianyuassistant.entity.XianyuChatMessage;
 import com.feijimiao.xianyuassistant.event.chatMessageEvent.ChatMessageData;
 import com.feijimiao.xianyuassistant.event.chatMessageEvent.ChatMessageReceivedEvent;
 import com.feijimiao.xianyuassistant.mapper.XianyuChatMessageMapper;
+import com.feijimiao.xianyuassistant.mapper.XianyuAccountMapper;
+import com.feijimiao.xianyuassistant.entity.XianyuAccount;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
@@ -31,6 +33,9 @@ public class ChatMessageEventSaveListener {
     
     @Autowired
     private XianyuChatMessageMapper chatMessageMapper;
+
+    @Autowired
+    private XianyuAccountMapper accountMapper;
     
     /**
      * 处理聊天消息接收事件 - 保存消息到数据库
@@ -45,6 +50,13 @@ public class ChatMessageEventSaveListener {
         // 转换为数据库实体
         XianyuChatMessage message = new XianyuChatMessage();
         org.springframework.beans.BeanUtils.copyProperties(messageData, message);
+        XianyuAccount account = accountMapper.selectById(message.getXianyuAccountId());
+        boolean incomingBuyerMessage = account != null
+                && account.getUnb() != null
+                && message.getSenderUserId() != null
+                && !message.getSenderUserId().equals(account.getUnb())
+                && (message.getContentType() != null && (message.getContentType() == 1 || message.getContentType() == 2));
+        message.setReadStatus(incomingBuyerMessage ? 0 : 1);
         
         log.info("【账号{}】[SaveListener]收到ChatMessageReceivedEvent事件: pnmId={}, contentType={}, msgContent={}, orderId={}", 
                 message.getXianyuAccountId(), message.getPnmId(), message.getContentType(), message.getMsgContent(), messageData.getOrderId());

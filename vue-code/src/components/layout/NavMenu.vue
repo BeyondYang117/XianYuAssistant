@@ -6,6 +6,9 @@
 const emit = defineEmits<{
   select: [index: string]
 }>()
+import { useMessageNotifications } from '@/composables/useMessageNotifications'
+
+const { unreadCount } = useMessageNotifications()
 
 const onSelect = (index: string) => {
   emit('select', index)
@@ -33,6 +36,7 @@ const onSelect = (index: string) => {
     <router-link to="/messages" class="nav-menu-item" active-class="nav-menu-item--active" @click="onSelect('/messages')">
       <svg style="width:18px;height:18px;margin-right:8px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       <span>消息管理</span>
+      <span v-if="unreadCount" class="nav-unread-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
     </router-link>
 
     <div class="nav-menu-divider"><span class="nav-menu-divider-text">自动化</span></div>
@@ -104,6 +108,23 @@ const onSelect = (index: string) => {
   color: #0A84FF;
   box-shadow: inset 0 0 0 1px rgba(10,132,255,0.25);
   font-weight: 600;
+}
+
+.nav-unread-badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ff453a;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 700;
 }
 
 .nav-menu-divider {

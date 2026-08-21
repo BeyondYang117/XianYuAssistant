@@ -43,6 +43,19 @@ public interface XianyuGoodsConfigMapper {
      */
     @Update("UPDATE xianyu_goods_config SET fixed_material = #{fixedMaterial} WHERE xianyu_account_id = #{accountId} AND xy_goods_id = #{xyGoodsId}")
     int updateFixedMaterial(@Param("accountId") Long accountId, @Param("xyGoodsId") String xyGoodsId, @Param("fixedMaterial") String fixedMaterial);
+
+    /**
+     * 更新自动改价配置。
+     * 单独一个语句而不是走通用 update：改价配置由独立界面维护，
+     * 通用 update 会把未传的 AI 回复等开关一起覆盖成 null。
+     */
+    @Update("UPDATE xianyu_goods_config SET auto_adjust_price_on = #{autoAdjustPriceOn}, " +
+            "adjust_target_price = #{adjustTargetPrice} " +
+            "WHERE xianyu_account_id = #{accountId} AND xy_goods_id = #{xyGoodsId}")
+    int updateAdjustPriceConfig(@Param("accountId") Long accountId,
+                                @Param("xyGoodsId") String xyGoodsId,
+                                @Param("autoAdjustPriceOn") Integer autoAdjustPriceOn,
+                                @Param("adjustTargetPrice") String adjustTargetPrice);
     
     /**
      * 根据账号ID删除配置

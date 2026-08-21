@@ -724,6 +724,54 @@
   transform: translateX(18px);
 }
 
+/* 自动改价：金额输入 + 保存 */
+.ad__adjust-price-row {
+  display: flex;
+  gap: var(--d-space-3);
+  margin-top: var(--d-space-3);
+}
+
+.ad__adjust-price-input {
+  flex: 1;
+  height: 38px;
+  padding: 0 var(--d-space-4);
+  border: none;
+  border-radius: var(--d-radius-sm);
+  background: rgba(255,255,255,0.15);
+  color: var(--d-text-primary);
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.ad__adjust-price-input::placeholder {
+  color: var(--d-text-tertiary);
+}
+
+.ad__adjust-price-save {
+  height: 38px;
+  padding: 0 var(--d-space-5);
+  border: none;
+  border-radius: var(--d-radius-sm);
+  background: rgba(10,132,255,0.85);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ad__adjust-price-save:active {
+  opacity: 0.7;
+}
+
+.ad__adjust-price-hint {
+  margin: var(--d-space-2) 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--d-text-tertiary);
+}
+
 .ad__config-section-title {
   font-size: 12px;
   font-weight: 600;

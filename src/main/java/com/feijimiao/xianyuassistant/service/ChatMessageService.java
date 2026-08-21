@@ -7,6 +7,7 @@ import com.feijimiao.xianyuassistant.controller.dto.MsgListReqDTO;
 import com.feijimiao.xianyuassistant.controller.dto.MsgListRespDTO;
 import com.feijimiao.xianyuassistant.controller.dto.ConversationListReqDTO;
 import com.feijimiao.xianyuassistant.controller.dto.ConversationListRespDTO;
+import com.feijimiao.xianyuassistant.controller.dto.UnreadMessagesRespDTO;
 import java.util.List;
 
 /**
@@ -52,4 +53,8 @@ public interface ChatMessageService {
     ResultObject<?> getContextMessages(MsgContextReqDTO reqDTO);
 
     ResultObject<ConversationListRespDTO> getConversationList(ConversationListReqDTO reqDTO);
+
+    ResultObject<UnreadMessagesRespDTO> getUnreadMessages(Long accountId, int limit);
+
+    ResultObject<?> markConversationRead(MsgContextReqDTO reqDTO);
 }

@@ -157,13 +157,12 @@ export function useMessageManager() {
   }
 
   // 账号变更
-  const handleAccountChange = () => {
+  const handleAccountChange = async () => {
     currentPage.value = 1
     goodsCurrentPage.value = 1
     goodsIdFilter.value = ''
     selectedConversation.value = null
-    loadMessages()
-    loadGoodsList()
+    await Promise.all([loadMessages(), loadGoodsList()])
   }
 
   // 选择商品筛选

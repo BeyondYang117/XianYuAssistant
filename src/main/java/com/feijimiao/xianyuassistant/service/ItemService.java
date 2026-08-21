@@ -58,6 +58,13 @@ public interface ItemService {
     ResultObject<DeleteItemRespDTO> deleteItem(DeleteItemReqDTO reqDTO);
     
     /**
+     * 更新商品自动改价配置
+     *
+     * @param reqDTO 请求参数
+     */
+    void updateAdjustPriceConfig(AdjustPriceConfigReqDTO reqDTO);
+
+    /**
      * 获取自动回复配置
      *
      * @param reqDTO 请求参数

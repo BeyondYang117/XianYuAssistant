@@ -57,6 +57,24 @@ class SqlSchemaParserTest {
     }
 
     @Test
+    void parsesGoodsConfigAdjustPriceColumns() {
+        SqlSchemaParser.SchemaDefinition schema = new SqlSchemaParser().parseSchemaFile("sql/schema.sql");
+
+        SqlSchemaParser.TableDefinition config = schema.getTables().get("xianyu_goods_config");
+        assertNotNull(config, "未解析到 xianyu_goods_config 表");
+        assertTrue(hasColumn(config, "auto_adjust_price_on"));
+        assertTrue(hasColumn(config, "adjust_target_price"));
+    }
+
+    @Test
+    void parsesChatMessageReadStatus() {
+        SqlSchemaParser.SchemaDefinition schema = new SqlSchemaParser().parseSchemaFile("sql/schema.sql");
+        SqlSchemaParser.TableDefinition messages = schema.getTables().get("xianyu_chat_message");
+        assertNotNull(messages, "未解析到 xianyu_chat_message 表");
+        assertTrue(hasColumn(messages, "read_status"));
+    }
+
+    @Test
     void accountTaskRunKeyIndexIsUnique() {
         SqlSchemaParser.SchemaDefinition schema = new SqlSchemaParser().parseSchemaFile("sql/schema.sql");
 

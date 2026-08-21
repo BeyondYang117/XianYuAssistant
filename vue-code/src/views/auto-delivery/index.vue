@@ -58,6 +58,8 @@ const {
   saveConfig,
   toggleAutoDelivery,
   toggleAutoConfirmShipment,
+  adjustPriceForm,
+  saveAdjustPriceConfig,
   loadDeliveryRecords,
   handleRecordsPageChange,
   viewGoodsDetail,
@@ -359,6 +361,37 @@ onMounted(() => {
                 </label>
               </div>
             </div>
+          </div>
+
+          <!-- 拍下未付款自动改价 -->
+          <div class="ad__config-section ad__config-section--no-pad-bottom">
+            <div class="ad__master-toggles">
+              <div class="ad__master-toggle">
+                <div class="ad__toggle-label">拍下未付款自动改价</div>
+                <label class="ad__switch ad__switch--sm">
+                  <input
+                    type="checkbox"
+                    :checked="adjustPriceForm.autoAdjustPriceOn === 1"
+                    @change="adjustPriceForm.autoAdjustPriceOn = ($event.target as HTMLInputElement).checked ? 1 : 0"
+                  />
+                  <span class="ad__switch-track"></span>
+                  <span class="ad__switch-thumb"></span>
+                </label>
+              </div>
+            </div>
+            <div class="ad__adjust-price-row">
+              <input
+                v-model="adjustPriceForm.adjustTargetPrice"
+                type="text"
+                inputmode="decimal"
+                class="ad__adjust-price-input"
+                placeholder="改价后总价（元），如 9.90"
+              />
+              <button class="ad__adjust-price-save" @click="saveAdjustPriceConfig">保存改价</button>
+            </div>
+            <p class="ad__adjust-price-hint">
+              买家拍下未付款时把订单总价改为该金额，运费按 0 处理；同一订单只改价一次
+            </p>
           </div>
 
           <!-- SKU Selector -->

@@ -1,7 +1,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getAccountList } from '@/api/account'
-import { getGoodsList, updateAutoDeliveryStatus, updateAutoConfirmShipment } from '@/api/goods'
+import { getGoodsList, updateAutoDeliveryStatus, updateAutoConfirmShipment, updateAdjustPriceConfig } from '@/api/goods'
 import {
   getAutoDeliveryConfig,
   saveOrUpdateAutoDeliveryConfig,
@@ -80,6 +80,12 @@ export function useAutoDelivery() {
     kamiDeliveryTemplate: '',
     autoDeliveryImageUrl: '',
     autoConfirmShipment: 0
+  })
+
+  // 自动改价配置属于商品维度，与发货规格无关，单独一份表单
+  const adjustPriceForm = ref({
+    autoAdjustPriceOn: 0,
+    adjustTargetPrice: ''
   })
 
   const kamiConfigOptions = ref<KamiConfig[]>([])
@@ -330,6 +336,10 @@ export function useAutoDelivery() {
     selectedGoods.value = goods
     recordsPageNum.value = 1
 
+    // 改价配置随商品列表一起返回，切换商品时同步刷新，避免沿用上一个商品的金额
+    adjustPriceForm.value.autoAdjustPriceOn = goods.autoAdjustPriceOn === 1 ? 1 : 0
+    adjustPriceForm.value.adjustTargetPrice = goods.adjustTargetPrice || ''
+
     await loadSkuList()
 
     if (skuList.value.length > 1) {
@@ -523,8 +533,51 @@ export function useAutoDelivery() {
     }
   }
 
-  const loadDeliveryRecords = async () => {
-    if (!selectedAccountId.value || !selectedGoods.value) {
+  /**
+   * 保存自动改价配置。
+   * 开启时必须有合法金额：金额非法而开关已开，会在买家拍下时才暴露问题。
+   */
+  const saveAdjustPriceConfig = async () => {
+    if (!selectedGoods.value || !selectedAccountId.value) {
+      showInfo('请先选择商品')
+      return
+    }
+
+    const enabled = adjustPriceForm.value.autoAdjustPriceOn === 1
+    const price = (adjustPriceForm.value.adjustTargetPrice || '').trim()
+    if (enabled && !/^\d+(\.\d{1,2})?$/.test(price)) {
+      showInfo('改价金额格式非法，最多两位小数')
+      return
+    }
+    if (enabled && Number(price) <= 0) {
+      showInfo('改价金额必须大于 0')
+      return
+    }
+
+    try {
+      const response = await updateAdjustPriceConfig({
+        xianyuAccountId: selectedAccountId.value,
+        xyGoodsId: selectedGoods.value.item.xyGoodId,
+        autoAdjustPriceOn: enabled ? 1 : 0,
+        adjustTargetPrice: price
+      })
+
+      if (response.code === 0 || response.code === 200) {
+        showSuccess('自动改价配置已保存')
+        // 同步回列表项，避免切走再切回时显示旧值
+        selectedGoods.value.autoAdjustPriceOn = enabled ? 1 : 0
+        selectedGoods.value.adjustTargetPrice = price
+      } else {
+        throw new Error(response.msg || '保存失败')
+      }
+    } catch (error: any) {
+      if (!error.messageShown) {
+        showError('保存自动改价配置失败: ' + error.message)
+      }
+    }
+  }
+
+  const loadDeliveryRecords = async () => {    if (!selectedAccountId.value || !selectedGoods.value) {
       deliveryRecords.value = []
       recordsTotal.value = 0
       return
@@ -769,6 +822,8 @@ export function useAutoDelivery() {
     saveConfig,
     toggleAutoDelivery,
     toggleAutoConfirmShipment,
+    adjustPriceForm,
+    saveAdjustPriceConfig,
     loadDeliveryRecords,
     handleRecordsPageChange,
     viewGoodsDetail,

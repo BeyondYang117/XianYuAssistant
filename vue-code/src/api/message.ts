@@ -54,6 +54,22 @@ export interface ConversationListResponse {
   pageSize: number;
 }
 
+export interface UnreadMessage {
+  accountId: number
+  sid: string
+  peerUserId: string
+  peerUserName: string
+  lastMessage?: string
+  lastMessageId: number
+  lastMessageTime: number
+  xyGoodsId?: string
+}
+
+export interface UnreadMessagesResponse {
+  unreadCount: number
+  messages: UnreadMessage[]
+}
+
 export function getConversationList(data: {
   xianyuAccountId: number;
   xyGoodsId?: string;
@@ -95,6 +111,22 @@ export function getContextMessages(data: {
     method: 'POST',
     data: { sid: data.sid, limit: data.limit || 20, offset: data.offset || 0 }
   });
+}
+
+export function getUnreadMessages(xianyuAccountId: number) {
+  return request<UnreadMessagesResponse>({
+    url: '/msg/unread',
+    method: 'POST',
+    data: { xianyuAccountId }
+  })
+}
+
+export function markConversationRead(data: { xianyuAccountId: number; sid: string }) {
+  return request<void>({
+    url: '/msg/read',
+    method: 'POST',
+    data
+  })
 }
 
 // 发送消息

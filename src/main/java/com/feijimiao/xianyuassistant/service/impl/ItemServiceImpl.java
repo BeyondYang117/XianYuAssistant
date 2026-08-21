@@ -46,6 +46,9 @@ public class ItemServiceImpl implements ItemService {
     @Autowired
     private com.feijimiao.xianyuassistant.mapper.XianyuGoodsAutoDeliveryConfigMapper autoDeliveryConfigMapper;
 
+    @Autowired
+    private com.feijimiao.xianyuassistant.mapper.XianyuGoodsConfigMapper goodsConfigMapper;
+
     /**
      * 获取指定页的商品信息（内部方法）
      */
@@ -351,6 +354,8 @@ public class ItemServiceImpl implements ItemService {
                         itemWithConfig.setXianyuKeywordReplyOn(config.getXianyuKeywordReplyOn());
                         itemWithConfig.setHumanInterventionOn(config.getHumanInterventionOn());
                         itemWithConfig.setHumanInterventionMinutes(config.getHumanInterventionMinutes());
+                        itemWithConfig.setAutoAdjustPriceOn(config.getAutoAdjustPriceOn() != null ? config.getAutoAdjustPriceOn() : 0);
+                        itemWithConfig.setAdjustTargetPrice(config.getAdjustTargetPrice());
                     } else {
                         itemWithConfig.setXianyuAutoDeliveryOn(0);
                         itemWithConfig.setXianyuAutoReplyOn(0);
@@ -358,6 +363,7 @@ public class ItemServiceImpl implements ItemService {
                         itemWithConfig.setXianyuKeywordReplyOn(0);
                         itemWithConfig.setHumanInterventionOn(0);
                         itemWithConfig.setHumanInterventionMinutes(10);
+                        itemWithConfig.setAutoAdjustPriceOn(0);
                     }
                     
                     // 获取自动发货配置
@@ -494,6 +500,8 @@ public class ItemServiceImpl implements ItemService {
                 itemWithConfig.setXianyuKeywordReplyOn(config.getXianyuKeywordReplyOn());
                 itemWithConfig.setHumanInterventionOn(config.getHumanInterventionOn());
                 itemWithConfig.setHumanInterventionMinutes(config.getHumanInterventionMinutes());
+                itemWithConfig.setAutoAdjustPriceOn(config.getAutoAdjustPriceOn() != null ? config.getAutoAdjustPriceOn() : 0);
+                itemWithConfig.setAdjustTargetPrice(config.getAdjustTargetPrice());
             } else {
                 itemWithConfig.setXianyuAutoDeliveryOn(0);
                 itemWithConfig.setXianyuAutoReplyOn(0);
@@ -501,6 +509,7 @@ public class ItemServiceImpl implements ItemService {
                 itemWithConfig.setXianyuKeywordReplyOn(0);
                 itemWithConfig.setHumanInterventionOn(0);
                 itemWithConfig.setHumanInterventionMinutes(10);
+                itemWithConfig.setAutoAdjustPriceOn(0);
             }
             
             // 获取自动发货配置
@@ -1050,6 +1059,42 @@ public class ItemServiceImpl implements ItemService {
     
 
     
+    /**
+     * 更新商品自动改价配置。
+     * 配置不存在时先建一行默认关闭其它开关的记录，再写改价字段；
+     * 已存在则只更新改价两列，避免覆盖 AI 回复等无关开关。
+     */
+    @Override
+    public void updateAdjustPriceConfig(AdjustPriceConfigReqDTO reqDTO) {
+        int autoAdjustPriceOn = Integer.valueOf(1).equals(reqDTO.getAutoAdjustPriceOn()) ? 1 : 0;
+        String targetPrice = reqDTO.getAdjustTargetPrice() == null ? null : reqDTO.getAdjustTargetPrice().trim();
+
+        com.feijimiao.xianyuassistant.entity.XianyuGoodsConfig existing =
+                autoDeliveryService.getGoodsConfig(reqDTO.getXianyuAccountId(), reqDTO.getXyGoodsId());
+
+        if (existing == null) {
+            com.feijimiao.xianyuassistant.entity.XianyuGoodsConfig created =
+                    new com.feijimiao.xianyuassistant.entity.XianyuGoodsConfig();
+            created.setXianyuAccountId(reqDTO.getXianyuAccountId());
+            created.setXyGoodsId(reqDTO.getXyGoodsId());
+            created.setXianyuAutoDeliveryOn(0);
+            created.setXianyuAutoReplyOn(0);
+            created.setXianyuAutoReplyContextOn(1);
+            created.setXianyuKeywordReplyOn(0);
+            created.setHumanInterventionOn(0);
+            created.setHumanInterventionMinutes(10);
+            created.setAutoAdjustPriceOn(autoAdjustPriceOn);
+            created.setAdjustTargetPrice(targetPrice);
+            created.setCreateTime(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date()));
+            created.setUpdateTime(created.getCreateTime());
+            autoDeliveryService.saveOrUpdateGoodsConfig(created);
+            return;
+        }
+
+        goodsConfigMapper.updateAdjustPriceConfig(
+                reqDTO.getXianyuAccountId(), reqDTO.getXyGoodsId(), autoAdjustPriceOn, targetPrice);
+    }
+
     /**
      * 获取自动回复配置
      */

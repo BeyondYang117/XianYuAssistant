@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, shallowRef, onMounted, onUnmounted, computed, provide, markRaw } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import NavMenu from './NavMenu.vue'
 import UpdateDialog from './UpdateDialog.vue'
 import { getVersion, checkUpdate } from '@/api/system'
@@ -16,8 +16,12 @@ import IconRobot from '@/components/icons/IconRobot.vue'
 import IconChat from '@/components/icons/IconChat.vue'
 import IconLog from '@/components/icons/IconLog.vue'
 import IconShield from '@/components/icons/IconShield.vue'
+import { useMessageNotifications } from '@/composables/useMessageNotifications'
+import MessageNotificationControl from './MessageNotificationControl.vue'
 
 const route = useRoute()
+const router = useRouter()
+const { start, stop } = useMessageNotifications()
 
 declare const __APP_VERSION__: string
 
@@ -128,10 +132,12 @@ onMounted(() => {
   checkScreenSize()
   window.addEventListener('resize', checkScreenSize)
   loadVersion()
+  start(router)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkScreenSize)
+  stop()
 })
 </script>
 
@@ -149,6 +155,7 @@ onUnmounted(() => {
       <div v-if="headerContent && (route.path === '/goods' || route.path === '/messages' || route.path === '/auto-delivery' || route.path === '/kami-config' || route.path === '/orders' || route.path === '/auto-reply' || route.path === '/operation-log')" class="header-content-slot">
         <component :is="headerContent" />
       </div>
+      <MessageNotificationControl />
     </div>
 
     <!-- 平板端: 顶部导航栏（带抽屉按钮） -->
@@ -163,6 +170,7 @@ onUnmounted(() => {
       <div v-if="headerContent && (route.path === '/goods' || route.path === '/messages' || route.path === '/auto-delivery' || route.path === '/kami-config' || route.path === '/orders' || route.path === '/auto-reply' || route.path === '/operation-log')" class="header-content-slot">
         <component :is="headerContent" />
       </div>
+      <MessageNotificationControl />
     </div>
 
     <!-- 手机端和平板端: 左侧抽屉菜单 -->
@@ -194,7 +202,7 @@ onUnmounted(() => {
     <!-- 桌面端: 固定侧边栏 -->
     <div v-if="isDesktop" class="layout-container">
       <aside class="sidebar">
-        <div class="logo" @click="openUpdateDialog" style="cursor: pointer">
+        <div class="sidebar-brand-row"><div class="logo" @click="openUpdateDialog" style="cursor: pointer">
           <div class="logo-icon">X</div>
           <div class="logo-text-wrap">
             <div class="logo-text">XianYuAssistant</div>
@@ -203,7 +211,7 @@ onUnmounted(() => {
               <span v-if="hasNewVersion" class="update-dot"></span>
             </div>
           </div>
-        </div>
+        </div><MessageNotificationControl /></div>
         <NavMenu />
       </aside>
 
@@ -268,6 +276,9 @@ onUnmounted(() => {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
+
+.sidebar-brand-row { display: flex; align-items: center; padding-right: 16px; }
+.sidebar-brand-row .logo { flex: 1; min-width: 0; }
 
 .sidebar::-webkit-scrollbar {
   display: none; /* Chrome, Safari, Opera */

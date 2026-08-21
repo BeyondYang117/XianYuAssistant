@@ -7,6 +7,7 @@ import com.feijimiao.xianyuassistant.mapper.XianyuGoodsAutoReplyRecordMapper;
 import com.feijimiao.xianyuassistant.service.ItemService;
 import com.feijimiao.xianyuassistant.service.ItemDetailSyncService;
 import com.feijimiao.xianyuassistant.service.AutoDeliveryService;
+import com.feijimiao.xianyuassistant.service.MoneyUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -107,8 +108,41 @@ public class ItemController {
         }
     }
 
-    @PostMapping("/updateAutoConfirmShipment")
-    public ResultObject<String> updateAutoConfirmShipment(@RequestBody java.util.Map<String, Object> params) {
+    /**
+     * 更新商品的拍下未付款自动改价配置
+     *
+     * @param reqDTO 请求参数
+     * @return 更新结果
+     */
+    @PostMapping("/updateAdjustPriceConfig")
+    public ResultObject<?> updateAdjustPriceConfig(@RequestBody AdjustPriceConfigReqDTO reqDTO) {
+        if (reqDTO.getXianyuAccountId() == null || reqDTO.getXyGoodsId() == null || reqDTO.getXyGoodsId().isBlank()) {
+            return ResultObject.validateFailed("缺少账号ID或商品ID");
+        }
+
+        boolean enabled = Integer.valueOf(1).equals(reqDTO.getAutoAdjustPriceOn());
+        // 开启时必须给出合法金额，否则事件触发时才发现配置无效已经太晚
+        if (enabled) {
+            try {
+                MoneyUtils.parseYuanToCents(reqDTO.getAdjustTargetPrice());
+            } catch (MoneyUtils.InvalidAmountException e) {
+                return ResultObject.validateFailed(e.getMessage());
+            }
+        }
+
+        try {
+            itemService.updateAdjustPriceConfig(reqDTO);
+            log.info("更新自动改价配置: xianyuAccountId={}, xyGoodsId={}, on={}, target={}",
+                    reqDTO.getXianyuAccountId(), reqDTO.getXyGoodsId(), enabled, reqDTO.getAdjustTargetPrice());
+            return ResultObject.success(null, "更新成功");
+        } catch (Exception e) {
+            log.error("更新自动改价配置失败: xianyuAccountId={}, xyGoodsId={}",
+                    reqDTO.getXianyuAccountId(), reqDTO.getXyGoodsId(), e);
+            return ResultObject.failed("更新自动改价配置失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/updateAutoConfirmShipment")    public ResultObject<String> updateAutoConfirmShipment(@RequestBody java.util.Map<String, Object> params) {
         try {
             Long accountId = Long.parseLong(params.get("xianyuAccountId").toString());
             String xyGoodsId = params.get("xyGoodsId").toString();

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import type { ConversationSummary } from '@/api/message'
 import { useMessageManager } from './useMessageManager'
 import './messages.css'
@@ -10,6 +11,7 @@ import IconSearch from '@/components/icons/IconSearch.vue'
 import GoodsSidebar from './components/GoodsSidebar.vue'
 import ConversationList from './components/ConversationList.vue'
 import ChatPanel from './components/ChatPanel.vue'
+import { useMessageNotifications } from '@/composables/useMessageNotifications'
 
 const {
   loading, silentLoading, accounts, selectedAccountId, goodsIdFilter,
@@ -18,6 +20,8 @@ const {
   getCurrentAccountUnb, loadAccounts, loadMessages, handleAccountChange,
   selectGoods, clearFilter, selectConversation, handlePageChange
 } = useMessageManager()
+const route = useRoute()
+const { setActiveConversation, acknowledgeConversation } = useMessageNotifications()
 
 const sidebarCollapsed = ref(false)
 const mobileView = ref<'conversations' | 'chat'>('conversations')
@@ -49,14 +53,43 @@ const pageButtons = computed(() => {
   return Array.from({ length: end - start + 1 }, (_, index) => start + index)
 })
 
+const applyNotificationTarget = async () => {
+  const queryAccountId = Number(route.query.accountId)
+  if (queryAccountId && accounts.value.some(account => account.id === queryAccountId) && selectedAccountId.value !== queryAccountId) {
+    selectedAccountId.value = queryAccountId
+    await handleAccountChange()
+  }
+  const querySid = typeof route.query.sid === 'string' ? route.query.sid : ''
+  if (querySid) {
+    const conversation = conversationList.value.find(item => item.sid === querySid)
+    if (conversation) selectConversationAndOpen(conversation)
+  }
+}
+
 onMounted(async () => {
   await loadAccounts()
+  await applyNotificationTarget()
   refreshTimer = setInterval(() => {
     if (selectedAccountId.value) loadMessages(true)
   }, 5000)
 })
 onBeforeUnmount(() => {
   if (refreshTimer) clearInterval(refreshTimer)
+  setActiveConversation(null, null)
+})
+
+watch([selectedAccountId, () => selectedConversation.value?.sid, mobileView], ([accountId, sid, view]) => {
+  const conversationVisible = window.innerWidth >= 768 || view === 'chat'
+  if (accountId && sid && conversationVisible) {
+    setActiveConversation(accountId, sid)
+    acknowledgeConversation(accountId, sid).catch(() => undefined)
+  } else {
+    setActiveConversation(null, null)
+  }
+})
+
+watch(() => [route.query.accountId, route.query.sid], () => {
+  applyNotificationTarget()
 })
 </script>
 

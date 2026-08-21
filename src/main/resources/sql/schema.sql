@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS xianyu_chat_message (
     -- 时间信息
     message_time BIGINT,                          -- 消息时间戳（毫秒，字段1.5）
     create_time DATETIME DEFAULT (datetime('now', 'localtime')),  -- 创建时间
+    read_status TINYINT DEFAULT 1,                 -- 0:未读买家消息 1:已读或非买家消息
     
     -- 外键约束
     FOREIGN KEY (xianyu_account_id) REFERENCES xianyu_account(id)
@@ -175,6 +176,8 @@ CREATE TABLE IF NOT EXISTS xianyu_goods_config (
     xianyu_keyword_reply_on TINYINT DEFAULT 0,        -- 关键词回复开关：1-开启，0-关闭，默认关闭
     human_intervention_on TINYINT DEFAULT 0,          -- 人工干预开关：1-开启，0-关闭，默认关闭。开启后延时任务到期时若卖家已人工回复则取消自动回复
     human_intervention_minutes INTEGER DEFAULT 10,    -- 人工干预不回复持续时间（分钟），默认10
+    auto_adjust_price_on TINYINT DEFAULT 0,           -- 拍下未付款自动改价开关：1-开启，0-关闭，默认关闭
+    adjust_target_price VARCHAR(20),                  -- 改价目标总价（元，十进制字符串，最多两位小数）
     fixed_material TEXT,                              -- 固定资料（用于AI自动回复）
     create_time DATETIME DEFAULT (datetime('now', 'localtime')),   -- 创建时间
     update_time DATETIME DEFAULT (datetime('now', 'localtime')),   -- 更新时间

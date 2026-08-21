@@ -29,6 +29,10 @@ export interface GoodsItemWithConfig {
   humanInterventionMinutes: number;
   autoDeliveryType?: number;
   autoDeliveryContent?: string;
+  /** 拍下未付款自动改价开关 1:开启 0:关闭 */
+  autoAdjustPriceOn?: number;
+  /** 改价目标总价（元） */
+  adjustTargetPrice?: string;
 }
 
 // 商品列表响应
@@ -122,6 +126,20 @@ export function updateAutoConfirmShipment(data: {
 }) {
   return request({
     url: '/items/updateAutoConfirmShipment',
+    method: 'POST',
+    data
+  });
+}
+
+// 更新拍下未付款自动改价配置
+export function updateAdjustPriceConfig(data: {
+  xianyuAccountId: number;
+  xyGoodsId: string;
+  autoAdjustPriceOn: number;
+  adjustTargetPrice: string;
+}) {
+  return request({
+    url: '/items/updateAdjustPriceConfig',
     method: 'POST',
     data
   });
