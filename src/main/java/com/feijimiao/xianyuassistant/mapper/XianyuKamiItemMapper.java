@@ -15,6 +15,11 @@ public interface XianyuKamiItemMapper extends BaseMapper<XianyuKamiItem> {
     @Select("SELECT * FROM xianyu_kami_item WHERE kami_config_id = #{kamiConfigId} AND status = 0 ORDER BY sort_order ASC LIMIT 1")
     XianyuKamiItem findNextUnused(@Param("kamiConfigId") Long kamiConfigId);
 
+    @Select("SELECT * FROM xianyu_kami_item WHERE kami_config_id = #{kamiConfigId} AND order_id = #{orderId} AND status = 1 " +
+            "ORDER BY sort_order ASC, id ASC")
+    List<XianyuKamiItem> findAllByConfigIdAndOrderId(@Param("kamiConfigId") Long kamiConfigId,
+                                                     @Param("orderId") String orderId);
+
     @Select("SELECT * FROM xianyu_kami_item WHERE kami_config_id = #{kamiConfigId} AND status = 0 ORDER BY RANDOM() LIMIT 1")
     XianyuKamiItem findRandomUnused(@Param("kamiConfigId") Long kamiConfigId);
 

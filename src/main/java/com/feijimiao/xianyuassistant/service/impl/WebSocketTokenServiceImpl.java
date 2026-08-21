@@ -273,9 +273,9 @@ public class WebSocketTokenServiceImpl implements WebSocketTokenService {
                     .post(RequestBody.create(formData, MediaType.parse("application/x-www-form-urlencoded")))
                     .header("Host", "h5api.m.goofish.com")
                     .header("sec-ch-ua-platform", "\"Windows\"")
-                    .header("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+                    .header("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     .header("accept", "application/json")
-                    .header("sec-ch-ua", "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"")
+                    .header("sec-ch-ua", "\"Chromium\";v=\"120\", \"Not_A Brand\";v=\"24\", \"Google Chrome\";v=\"120\"")
                     .header("sec-ch-ua-mobile", "?0")
                     .header("origin", "https://www.goofish.com")
                     .header("sec-fetch-site", "same-site")
@@ -375,22 +375,21 @@ public class WebSocketTokenServiceImpl implements WebSocketTokenService {
                         Map<String, Object> dataMap = (Map<String, Object>) responseMap.get("data");
                         log.info("【账号{}】data字段内容: {}", accountId, dataMap);
 
+                        String captchaUrl = null;
                         if (dataMap != null && dataMap.containsKey("url")) {
-                            String captchaUrl = (String) dataMap.get("url");
+                            captchaUrl = (String) dataMap.get("url");
 
                             pendingCaptchaAccounts.put(accountId, captchaUrl);
                             captchaTimestamps.put(accountId, System.currentTimeMillis());
-
-                            updateAccountStatusToCaptchaRequired(accountId);
-
                             log.warn("【账号{}】检测到滑块验证，URL: {}", accountId, captchaUrl);
                             log.warn("【账号{}】需要人工完成滑块验证，请访问: http://localhost:8080/websocket-manual-captcha.html", accountId);
-                            log.warn("【账号{}】账号状态已更新为-2（需要验证）", accountId);
-
-                            throw new CaptchaRequiredException(captchaUrl);
                         } else {
                             log.error("【账号{}】需要滑块验证但未找到URL", accountId);
                         }
+
+                        updateAccountStatusToCaptchaRequired(accountId);
+                        log.warn("【账号{}】账号状态已更新为-2（需要验证），停止自动请求", accountId);
+                        throw new CaptchaRequiredException(captchaUrl);
                     }
 
                     // 检查是否触发风控（RGV587_ERROR）
@@ -399,8 +398,8 @@ public class WebSocketTokenServiceImpl implements WebSocketTokenService {
                         log.error("【账号{}】❌ 触发风控: {}", accountId, retList);
                         log.error("【账号{}】系统目前无法自动解决，请进入闲鱼网页版-点击消息-过滑块-复制最新的Cookie", accountId);
                         updateCookieStatus(accountId, 3);
-                        throw new com.feijimiao.xianyuassistant.exception.CookieExpiredException(
-                                "触发风控，请进入闲鱼网页版过滑块后更新Cookie");
+                        updateAccountStatusToCaptchaRequired(accountId);
+                        throw new CaptchaRequiredException(null);
                     }
                 }
 
@@ -470,6 +469,7 @@ public class WebSocketTokenServiceImpl implements WebSocketTokenService {
             
             // 标记为失效（风控）
             updateCookieStatus(accountId, 3); // 3表示失效（风控）
+            updateAccountStatusToCaptchaRequired(accountId);
 
             // 记录操作日志
             operationLogService.log(accountId,
@@ -490,8 +490,7 @@ public class WebSocketTokenServiceImpl implements WebSocketTokenService {
                 log.error("【账号{}】发送风控验证邮件通知失败", accountId, e);
             }
 
-            throw new com.feijimiao.xianyuassistant.exception.CaptchaRequiredException(
-                "触发风控，请进入闲鱼网页版过滑块后更新Cookie");
+            throw new com.feijimiao.xianyuassistant.exception.CaptchaRequiredException(null);
         }
 
         boolean isSessionExpired = response != null && (

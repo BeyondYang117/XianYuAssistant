@@ -1,14 +1,15 @@
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
-import { queryDeliveryRecordList, confirmShipment } from '@/api/order'
+import { queryDeliveryRecordList, confirmShipment, manualExtractDelivery } from '@/api/order'
 import { getAccountList } from '@/api/account'
 import { getGoodsList, type GoodsItemWithConfig } from '@/api/goods'
-import type { DeliveryRecordVO, DeliveryRecordQueryReq } from '@/api/order'
+import type { DeliveryRecordVO, DeliveryRecordQueryReq, ManualExtractResult } from '@/api/order'
 import type { Account } from '@/types'
 import { showSuccess, showError, showConfirm, showInfo } from '@/utils'
 import { formatTime } from '@/utils'
 
 export interface DeliveryRecordItem extends DeliveryRecordVO {
   confirming?: boolean
+  extracting?: boolean
 }
 
 export function useOrderManager() {
@@ -163,7 +164,8 @@ export function useOrderManager() {
       const response = await queryDeliveryRecordList(queryParams)
       orderList.value = (response.data?.records || []).map(item => ({
         ...item,
-        confirming: false
+        confirming: false,
+        extracting: false
       }))
       total.value = response.data?.total || 0
     } catch (error: any) {
@@ -195,12 +197,16 @@ export function useOrderManager() {
     loadOrders()
   }
 
-  const copySId = (sid: string) => {
-    navigator.clipboard.writeText(sid).then(() => {
-      showSuccess('已复制')
+  const copyText = (text: string, successMsg = '已复制') => {
+    navigator.clipboard.writeText(text).then(() => {
+      showSuccess(successMsg)
     }).catch(() => {
       showError('复制失败')
     })
+  }
+
+  const copySId = (sid: string) => {
+    copyText(sid)
   }
 
   const handleConfirmShipment = async (row: DeliveryRecordItem) => {
@@ -224,6 +230,44 @@ export function useOrderManager() {
     }
   }
 
+  const extractResult = ref<ManualExtractResult | null>(null)
+
+  const handleManualExtract = async (row: DeliveryRecordItem) => {
+    if (!row.orderId) {
+      showError('订单ID为空')
+      return
+    }
+    const accountId = row.xianyuAccountId ?? queryParams.xianyuAccountId
+    if (!accountId) {
+      showError('未能确定闲鱼账号')
+      return
+    }
+    try {
+      row.extracting = true
+      const response = await manualExtractDelivery({
+        xianyuAccountId: accountId,
+        orderId: row.orderId
+      })
+      if ((response.code === 0 || response.code === 200) && response.data) {
+        extractResult.value = response.data
+        showSuccess('提取成功，请复制内容到闲鱼手工发送')
+        loadOrders()
+      } else {
+        throw new Error(response.msg || '提取失败')
+      }
+    } catch (error: any) {
+      if (!error.messageShown) {
+        showError('提取卡密失败: ' + (error.message || '未知错误'))
+      }
+    } finally {
+      row.extracting = false
+    }
+  }
+
+  const closeExtractResult = () => {
+    extractResult.value = null
+  }
+
   return {
     loading,
     orderList,
@@ -240,6 +284,7 @@ export function useOrderManager() {
     dialogs,
     confirmTarget,
     totalPages,
+    extractResult,
     loadAccounts,
     loadOrders,
     loadGoods,
@@ -248,7 +293,10 @@ export function useOrderManager() {
     handlePageChange,
     handleSizeChange,
     copySId,
+    copyText,
     handleConfirmShipment,
+    handleManualExtract,
+    closeExtractResult,
     handleGoodsScroll,
     selectGoods,
     clearGoodsFilter,

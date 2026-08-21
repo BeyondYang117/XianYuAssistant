@@ -264,8 +264,11 @@ public class XianyuWebSocketClient extends WebSocketClient {
                     }
                 }
 
-                // 发送ACK确认消息（参考Python的handle_message方法）
-                sendAckMessage(messageData);
+                // 只有服务端主动推送帧需要 ACK。code 响应帧（包括注册、心跳和
+                // 发送结果）已经是对客户端请求的响应，不能再反向 ACK 一次。
+                if (messageData.get("lwp") != null && messageData.get("code") == null) {
+                    sendAckMessage(messageData);
+                }
                 
                 // 检查是否是心跳响应（参考Python的handle_heartbeat_response）
                 // Python中心跳响应的判断是 code == 200
@@ -504,6 +507,16 @@ public class XianyuWebSocketClient extends WebSocketClient {
         log.error("{}WebSocket发生错误", logPrefix(), ex);
         if (messageHandler != null) {
             messageHandler.handleError(accountId, ex);
+        }
+
+        // Java-WebSocket 某些网络异常只回调 onError，随后不一定可靠地回调 onClose。
+        // 主动关闭让统一的 onClose 重连流程接管，避免连接永久卡在半开状态。
+        if (!intentionalClose && isOpen()) {
+            try {
+                close();
+            } catch (Exception closeError) {
+                log.warn("{}WebSocket错误后关闭连接失败", logPrefix(), closeError);
+            }
         }
     }
 

@@ -31,6 +31,7 @@ const {
   selectedGoodsId,
   queryParams,
   totalPages,
+  extractResult,
   loadAccounts,
   loadOrders,
   loadGoods,
@@ -38,7 +39,10 @@ const {
   handleReset,
   handlePageChange,
   copySId,
+  copyText,
   handleConfirmShipment,
+  handleManualExtract,
+  closeExtractResult,
   handleGoodsScroll,
   selectGoods,
   clearGoodsFilter,
@@ -150,6 +154,23 @@ const executeConfirmShipment = async () => {
   }
   showConfirmDialog.value = false
   confirmTargetOrder.value = null
+}
+
+const showExtractDialog = ref(false)
+const extractTargetOrder = ref<any>(null)
+
+const openExtractDialog = (order: any) => {
+  extractTargetOrder.value = order
+  showExtractDialog.value = true
+}
+
+const executeManualExtract = async () => {
+  const target = extractTargetOrder.value
+  showExtractDialog.value = false
+  extractTargetOrder.value = null
+  if (target) {
+    await handleManualExtract(target)
+  }
 }
 </script>
 
@@ -314,6 +335,7 @@ const executeConfirmShipment = async () => {
           :loading="loading"
           @copy-sid="copySId"
           @confirm-shipment="openConfirmDialog"
+          @manual-extract="openExtractDialog"
         />
       </div>
 
@@ -399,6 +421,116 @@ const executeConfirmShipment = async () => {
               @click="executeConfirmShipment"
             >
               确认
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 手动提取卡密确认 -->
+    <Transition name="overlay-fade">
+      <div v-if="showExtractDialog" class="orders__dialog-overlay" @click.self="showExtractDialog = false">
+        <div class="orders__dialog">
+          <div class="orders__dialog-header">
+            <h3 class="orders__dialog-title">手动提取卡密</h3>
+          </div>
+          <div class="orders__dialog-body">
+            <p class="orders__dialog-text">
+              将按订单「{{ extractTargetOrder?.orderId }}」的购买数量提取卡密、套用自动发货文案，并把该订单标记为已发货。
+            </p>
+            <p class="orders__dialog-hint">
+              提取后需要你自己在闲鱼把内容发给买家。同一订单重复提取会复用已分配的卡密，不会重复扣减库存。
+            </p>
+          </div>
+          <div class="orders__dialog-footer">
+            <button
+              class="orders__dialog-btn orders__dialog-btn--cancel"
+              @click="showExtractDialog = false"
+            >
+              取消
+            </button>
+            <button
+              class="orders__dialog-btn orders__dialog-btn--confirm"
+              @click="executeManualExtract"
+            >
+              提取
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 提取结果：供人工复制到闲鱼手工发送 -->
+    <Transition name="overlay-fade">
+      <div v-if="extractResult" class="orders__dialog-overlay" @click.self="closeExtractResult">
+        <div class="orders__dialog orders__dialog--wide">
+          <div class="orders__dialog-header">
+            <h3 class="orders__dialog-title">发货内容已提取</h3>
+            <button class="orders__dialog-close" @click="closeExtractResult">&times;</button>
+          </div>
+          <div class="orders__dialog-body">
+            <div class="orders__extract-meta">
+              <span class="orders__extract-chip">订单 {{ extractResult.orderId }}</span>
+              <span class="orders__extract-chip">
+                {{ extractResult.deliveryMode === 2 ? '卡密发货' : '文本发货' }}
+              </span>
+              <span class="orders__extract-chip">
+                {{ extractResult.kamiCount }} / {{ extractResult.buyNum }} 份
+              </span>
+              <span v-if="extractResult.confirmShipmentTriggered" class="orders__extract-chip orders__extract-chip--ok">
+                已提交确认发货
+              </span>
+            </div>
+
+            <p v-if="extractResult.reused" class="orders__dialog-hint">
+              该订单此前已提取过卡密，本次复用了已分配的卡密，未重复扣减库存。
+            </p>
+            <p v-if="extractResult.warning" class="orders__dialog-hint orders__dialog-hint--warn">
+              {{ extractResult.warning }}
+            </p>
+
+            <div class="orders__extract-section">
+              <div class="orders__extract-label">
+                <span>发货文案</span>
+                <button class="orders__extract-copy" @click="copyText(extractResult!.content, '发货内容已复制')">
+                  复制全部
+                </button>
+              </div>
+              <pre class="orders__extract-content">{{ extractResult.content }}</pre>
+            </div>
+
+            <div v-if="extractResult.contents.length > 1" class="orders__extract-section">
+              <div class="orders__extract-label"><span>分条复制</span></div>
+              <div
+                v-for="(item, idx) in extractResult.contents"
+                :key="idx"
+                class="orders__extract-item"
+              >
+                <span class="orders__extract-item-index">{{ idx + 1 }}</span>
+                <pre class="orders__extract-item-text">{{ item }}</pre>
+                <button class="orders__extract-copy" @click="copyText(item, `第${idx + 1}份已复制`)">
+                  复制
+                </button>
+              </div>
+            </div>
+
+            <div v-if="extractResult.imageUrls.length > 0" class="orders__extract-section">
+              <div class="orders__extract-label"><span>发货图片（请一并发送）</span></div>
+              <div
+                v-for="(url, idx) in extractResult.imageUrls"
+                :key="url"
+                class="orders__extract-item"
+              >
+                <img :src="url" class="orders__extract-image" :alt="`发货图片${idx + 1}`" />
+                <button class="orders__extract-copy" @click="copyText(url, '图片地址已复制')">
+                  复制地址
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="orders__dialog-footer">
+            <button class="orders__dialog-btn orders__dialog-btn--confirm" @click="closeExtractResult">
+              我已发送
             </button>
           </div>
         </div>

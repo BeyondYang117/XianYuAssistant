@@ -4,10 +4,14 @@ import com.feijimiao.xianyuassistant.entity.XianyuGoodsAutoDeliveryConfig;
 import com.feijimiao.xianyuassistant.entity.XianyuGoodsOrder;
 import com.feijimiao.xianyuassistant.entity.XianyuGoodsAutoReplyRecord;
 import com.feijimiao.xianyuassistant.entity.XianyuGoodsConfig;
+import com.feijimiao.xianyuassistant.entity.XianyuKamiUsageRecord;
 import com.feijimiao.xianyuassistant.mapper.XianyuGoodsAutoDeliveryConfigMapper;
 import com.feijimiao.xianyuassistant.mapper.XianyuGoodsConfigMapper;
 import com.feijimiao.xianyuassistant.mapper.XianyuGoodsOrderMapper;
 import com.feijimiao.xianyuassistant.mapper.XianyuGoodsAutoReplyRecordMapper;
+import com.feijimiao.xianyuassistant.mapper.XianyuKamiUsageRecordMapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.feijimiao.xianyuassistant.controller.dto.ManualExtractDeliveryRespDTO;
 import com.feijimiao.xianyuassistant.service.AutoDeliveryService;
 import com.feijimiao.xianyuassistant.service.EmailNotifyService;
 import com.feijimiao.xianyuassistant.service.OrderService;
@@ -15,6 +19,7 @@ import com.feijimiao.xianyuassistant.service.WebSocketService;
 import com.feijimiao.xianyuassistant.service.delivery.DeliveryContext;
 import com.feijimiao.xianyuassistant.service.delivery.DeliveryStrategyResolver;
 import com.feijimiao.xianyuassistant.service.delivery.OrderDetailFetcher;
+import com.feijimiao.xianyuassistant.service.delivery.SkuResolver;
 import com.feijimiao.xianyuassistant.utils.HumanLikeDelayUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,6 +72,12 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
 
     @Autowired
     private DeliveryStrategyResolver deliveryStrategyResolver;
+
+    @Autowired
+    private SkuResolver skuResolver;
+
+    @Autowired
+    private XianyuKamiUsageRecordMapper kamiUsageRecordMapper;
     
     @Override
     public XianyuGoodsConfig getGoodsConfig(Long accountId, String xyGoodsId) {
@@ -246,6 +257,7 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
             dto.setConsignTime(record.getConsignTime());
             dto.setTotalPrice(record.getTotalPrice());
             dto.setBuyNum(record.getBuyNum());
+            dto.setDeliveryWay(record.getDeliveryWay());
             dto.setCreateTime(record.getCreateTime());
             recordDTOs.add(dto);
         }
@@ -370,25 +382,21 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
                     .deliveryConfig(deliveryConfig)
                     .build();
 
+            // 买多份的订单一次性把内容取齐：卡密模式下逐次调用会命中订单幂等复用，导致重复发同一张卡密。
+            List<String> contents = deliveryStrategyResolver.resolveBatch(deliveryMode, ctx, buyNum);
+            if (contents.size() < buyNum) {
+                String failMsg = deliveryContentFailMessage(deliveryMode, buyNum, contents.size());
+                log.warn("【账号{}】发货内容解析失败: {}", accountId, failMsg);
+                updateRecordState(recordId, -1, null, failMsg);
+                emailNotifyService.sendAutoDeliveryFailEmail(null, xyGoodsId, orderId, failMsg);
+                return;
+            }
+
             if (!wsConnected) {
                 log.info("【账号{}】WebSocket未连接，使用虚拟发货API: orderId={}", accountId, orderId);
-                String content = deliveryStrategyResolver.resolve(deliveryMode, ctx);
-                if (content == null) {
-                    String failMsg = deliveryMode == 1 ? "未配置发货内容" : (deliveryMode == 2 ? "卡密库存不足，无可用卡密" : "未知的发货模式: " + deliveryMode);
-                    log.warn("【账号{}】发货内容解析失败: {}", accountId, failMsg);
-                    updateRecordState(recordId, -1, null, failMsg);
-                    emailNotifyService.sendAutoDeliveryFailEmail(null, xyGoodsId, orderId, failMsg);
-                    return;
-                }
+                String content = String.join("\n", contents);
 
-                List<String> imageUrls = new ArrayList<>();
-                String imageUrlStr = deliveryConfig.getAutoDeliveryImageUrl();
-                if (imageUrlStr != null && !imageUrlStr.trim().isEmpty()) {
-                    for (String url : imageUrlStr.split(",")) {
-                        String trimmed = url.trim();
-                        if (!trimmed.isEmpty()) imageUrls.add(trimmed);
-                    }
-                }
+                List<String> imageUrls = parseImageUrls(deliveryConfig.getAutoDeliveryImageUrl());
 
                 String deliveryResult = orderService.consignDummyDelivery(accountId, orderId, content, imageUrls);
                 if (deliveryResult != null) {
@@ -407,15 +415,7 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
             for (int i = 0; i < buyNum; i++) {
                 log.info("【账号{}】发货第{}/{}次: orderId={}", accountId, i + 1, buyNum, orderId);
 
-                String content = deliveryStrategyResolver.resolve(deliveryMode, ctx);
-
-                if (content == null) {
-                    String failMsg = deliveryMode == 1 ? "未配置发货内容" : (deliveryMode == 2 ? "卡密库存不足，无可用卡密" : "未知的发货模式: " + deliveryMode);
-                    log.warn("【账号{}】发货内容解析失败: {}", accountId, failMsg);
-                    updateRecordState(recordId, -1, null, failMsg);
-                    emailNotifyService.sendAutoDeliveryFailEmail(null, xyGoodsId, orderId, failMsg);
-                    return;
-                }
+                String content = contents.get(i);
 
                 if (needHumanLikeDelay) {
                     if (i > 0) {
@@ -533,6 +533,32 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
         }
     }
 
+    /** 发货内容取不齐时的失败原因文案 */
+    private String deliveryContentFailMessage(int deliveryMode, int need, int got) {
+        if (deliveryMode == 1) {
+            return "未配置发货内容";
+        }
+        if (deliveryMode == 2) {
+            return got == 0
+                    ? "卡密库存不足，无可用卡密"
+                    : "卡密库存不足，需要" + need + "张，仅剩" + got + "张";
+        }
+        return "未知的发货模式: " + deliveryMode;
+    }
+
+    /** 解析逗号分隔的发货图片URL配置 */
+    private List<String> parseImageUrls(String imageUrlStr) {
+        List<String> imageUrls = new ArrayList<>();
+        if (imageUrlStr == null || imageUrlStr.trim().isEmpty()) {
+            return imageUrls;
+        }
+        for (String url : imageUrlStr.split(",")) {
+            String trimmed = url.trim();
+            if (!trimmed.isEmpty()) imageUrls.add(trimmed);
+        }
+        return imageUrls;
+    }
+
     @Override
     public void updateAutoConfirmShipment(Long accountId, String xyGoodsId, Integer autoConfirmShipment) {
         XianyuGoodsAutoDeliveryConfig config = autoDeliveryConfigMapper.findByAccountIdAndGoodsIdNoSku(accountId, xyGoodsId);
@@ -581,6 +607,127 @@ public class AutoDeliveryServiceImpl implements AutoDeliveryService {
         } catch (Exception e) {
             log.error("【账号{}】自定义发货异常: orderId={}", xianyuAccountId, orderId, e);
             return com.feijimiao.xianyuassistant.common.ResultObject.failed("自定义发货异常: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public com.feijimiao.xianyuassistant.common.ResultObject<ManualExtractDeliveryRespDTO> manualExtractDelivery(
+            Long xianyuAccountId, String orderId) {
+        try {
+            if (xianyuAccountId == null) {
+                return com.feijimiao.xianyuassistant.common.ResultObject.failed("闲鱼账号ID不能为空");
+            }
+            if (orderId == null || orderId.trim().isEmpty()) {
+                return com.feijimiao.xianyuassistant.common.ResultObject.failed("订单ID不能为空");
+            }
+
+            XianyuGoodsOrder record = orderMapper.selectByAccountIdAndOrderId(xianyuAccountId, orderId);
+            if (record == null) {
+                return com.feijimiao.xianyuassistant.common.ResultObject.failed("订单记录不存在");
+            }
+
+            Long recordId = record.getId();
+            String xyGoodsId = record.getXyGoodsId();
+            log.info("【账号{}】手动提取发货内容: recordId={}, xyGoodsId={}, orderId={}", xianyuAccountId, recordId, xyGoodsId, orderId);
+
+            // 人工兜底场景下Cookie大概率已失效，订单详情拿不到不能中断，改用本地记录降级。
+            String warning = null;
+            String orderSkuId = null;
+            Integer buyNum = null;
+            OrderDetailFetcher.OrderDetailInfo orderDetail = orderDetailFetcher.fetch(xianyuAccountId, xyGoodsId, orderId);
+            if (orderDetail != null) {
+                orderMapper.updateOrderDetail(recordId, orderDetail.buyerUserName, orderDetail.orderCreateTime,
+                        orderDetail.paySuccessTime, orderDetail.consignTime, orderDetail.skuName,
+                        orderDetail.goodsTitle, orderDetail.totalPrice, orderDetail.buyNum);
+                orderSkuId = orderDetail.skuId;
+                buyNum = orderDetail.buyNum;
+            } else {
+                warning = "获取订单详情失败(可能Cookie已过期)，已改用本地订单记录的规格与数量";
+                log.warn("【账号{}】手动提取时获取订单详情失败，降级使用本地记录: orderId={}", xianyuAccountId, orderId);
+                if (record.getSkuName() != null && !record.getSkuName().isEmpty()) {
+                    orderSkuId = skuResolver.resolveSkuIdByText(xianyuAccountId, xyGoodsId, record.getSkuName());
+                }
+                buyNum = record.getBuyNum();
+            }
+            if (buyNum == null || buyNum <= 0) {
+                buyNum = 1;
+            }
+            log.info("【账号{}】手动提取订单SKU: orderId={}, skuId={}, buyNum={}", xianyuAccountId, orderId, orderSkuId, buyNum);
+
+            XianyuGoodsAutoDeliveryConfig deliveryConfig = null;
+            if (orderSkuId != null && !orderSkuId.isEmpty()) {
+                deliveryConfig = autoDeliveryConfigMapper.findByAccountIdAndGoodsIdAndSkuId(xianyuAccountId, xyGoodsId, orderSkuId);
+            }
+            if (deliveryConfig == null) {
+                deliveryConfig = autoDeliveryConfigMapper.findByAccountIdAndGoodsIdNoSku(xianyuAccountId, xyGoodsId);
+            }
+            if (deliveryConfig == null) {
+                log.warn("【账号{}】商品无匹配的发货配置: xyGoodsId={}, skuId={}", xianyuAccountId, xyGoodsId, orderSkuId);
+                return com.feijimiao.xianyuassistant.common.ResultObject.failed("无匹配的发货配置");
+            }
+
+            int deliveryMode = deliveryConfig.getDeliveryMode() != null ? deliveryConfig.getDeliveryMode() : 1;
+            boolean reused = deliveryMode == 2 && countKamiUsage(orderId) > 0;
+
+            DeliveryContext ctx = DeliveryContext.builder()
+                    .recordId(recordId)
+                    .accountId(xianyuAccountId)
+                    .xyGoodsId(xyGoodsId)
+                    .sId(record.getSid())
+                    .orderId(orderId)
+                    .buyerUserName(record.getBuyerUserName())
+                    .deliveryConfig(deliveryConfig)
+                    .build();
+
+            List<String> contents = deliveryStrategyResolver.resolveBatch(deliveryMode, ctx, buyNum);
+            if (contents.size() < buyNum) {
+                String failMsg = deliveryContentFailMessage(deliveryMode, buyNum, contents.size());
+                log.warn("【账号{}】手动提取发货内容失败: orderId={}, {}", xianyuAccountId, orderId, failMsg);
+                return com.feijimiao.xianyuassistant.common.ResultObject.failed(failMsg);
+            }
+
+            String content = String.join("\n", contents);
+            updateRecordState(recordId, 1, content, null);
+            orderMapper.updateDeliveryWay(recordId, 1);
+            log.info("【账号{}】✅ 手动提取发货内容成功: recordId={}, deliveryMode={}, 份数={}, reused={}",
+                    xianyuAccountId, recordId, deliveryMode, contents.size(), reused);
+
+            XianyuGoodsAutoDeliveryConfig baseConfig = autoDeliveryConfigMapper.findByAccountIdAndGoodsIdNoSku(xianyuAccountId, xyGoodsId);
+            boolean autoConfirm = (baseConfig != null && baseConfig.getAutoConfirmShipment() != null && baseConfig.getAutoConfirmShipment() == 1);
+            if (autoConfirm) {
+                log.info("【账号{}】手动提取后自动确认发货: orderId={}", xianyuAccountId, orderId);
+                executeAutoConfirmShipment(xianyuAccountId, orderId);
+            }
+
+            ManualExtractDeliveryRespDTO respDTO = new ManualExtractDeliveryRespDTO();
+            respDTO.setOrderId(orderId);
+            respDTO.setDeliveryMode(deliveryMode);
+            respDTO.setBuyNum(buyNum);
+            respDTO.setKamiCount(contents.size());
+            respDTO.setContent(content);
+            respDTO.setContents(contents);
+            respDTO.setImageUrls(parseImageUrls(deliveryConfig.getAutoDeliveryImageUrl()));
+            respDTO.setConfirmShipmentTriggered(autoConfirm);
+            respDTO.setReused(reused);
+            respDTO.setWarning(warning);
+            return com.feijimiao.xianyuassistant.common.ResultObject.success(respDTO);
+
+        } catch (Exception e) {
+            log.error("【账号{}】手动提取发货内容异常: orderId={}", xianyuAccountId, orderId, e);
+            return com.feijimiao.xianyuassistant.common.ResultObject.failed("手动提取发货内容异常: " + e.getMessage());
+        }
+    }
+
+    /** 统计该订单已有的卡密使用记录数，用于判断本次是否为复用已分配的卡密 */
+    private long countKamiUsage(String orderId) {
+        try {
+            QueryWrapper<XianyuKamiUsageRecord> wrapper = new QueryWrapper<>();
+            wrapper.eq("order_id", orderId);
+            Long count = kamiUsageRecordMapper.selectCount(wrapper);
+            return count == null ? 0L : count;
+        } catch (Exception e) {
+            log.warn("统计卡密使用记录失败: orderId={}", orderId, e);
+            return 0L;
         }
     }
 }

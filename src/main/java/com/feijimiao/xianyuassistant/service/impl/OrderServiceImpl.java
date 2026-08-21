@@ -17,6 +17,7 @@ import com.feijimiao.xianyuassistant.service.AccountService;
 import com.feijimiao.xianyuassistant.service.OrderService;
 import com.feijimiao.xianyuassistant.service.delivery.DeliveryContext;
 import com.feijimiao.xianyuassistant.service.delivery.DeliveryStrategyResolver;
+import com.feijimiao.xianyuassistant.service.delivery.OrderDetailFetcher;
 import com.feijimiao.xianyuassistant.utils.XianyuApiCallUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,6 +53,9 @@ public class OrderServiceImpl implements OrderService {
 
     @Autowired
     private DeliveryStrategyResolver deliveryStrategyResolver;
+
+    @Autowired
+    private OrderDetailFetcher orderDetailFetcher;
     
     private final ObjectMapper objectMapper = new ObjectMapper();
     
@@ -442,7 +446,10 @@ public class OrderServiceImpl implements OrderService {
     public String consignDummyDeliveryWithConfig(Long accountId, String xyGoodsId, String orderId) {
         log.info("【账号{}】带配置凭证发货: xyGoodsId={}, orderId={}", accountId, xyGoodsId, orderId);
 
-        XianyuGoodsAutoDeliveryConfig deliveryConfig = autoDeliveryConfigMapper.findByAccountIdAndGoodsIdAndSkuId(accountId, xyGoodsId, null);
+        OrderDetailFetcher.OrderDetailInfo orderDetail = orderDetailFetcher.fetch(accountId, xyGoodsId, orderId);
+        String skuId = orderDetail != null ? orderDetail.skuId : null;
+        XianyuGoodsAutoDeliveryConfig deliveryConfig = skuId == null ? null
+                : autoDeliveryConfigMapper.findByAccountIdAndGoodsIdAndSkuId(accountId, xyGoodsId, skuId);
         if (deliveryConfig == null) {
             deliveryConfig = autoDeliveryConfigMapper.findByAccountIdAndGoodsIdNoSku(accountId, xyGoodsId);
         }
@@ -458,15 +465,33 @@ public class OrderServiceImpl implements OrderService {
                 .accountId(accountId)
                 .xyGoodsId(xyGoodsId)
                 .orderId(orderId)
+                .buyerUserName(orderDetail != null ? orderDetail.buyerUserName : null)
                 .deliveryConfig(deliveryConfig)
                 .build();
 
-        String content = deliveryStrategyResolver.resolve(deliveryMode, ctx);
-        if (content == null) {
-            String failMsg = deliveryMode == 1 ? "未配置发货内容" : (deliveryMode == 2 ? "卡密库存不足，无可用卡密" : "未知的发货模式: " + deliveryMode);
+        // 买多份的订单一次性把内容取齐，避免卡密模式下重复发同一张卡密。
+        Integer detailBuyNum = orderDetail != null ? orderDetail.buyNum : null;
+        XianyuGoodsOrder localOrder = detailBuyNum == null || detailBuyNum <= 0
+                ? orderMapper.selectByAccountIdAndOrderId(accountId, orderId) : null;
+        int buyNum = detailBuyNum != null && detailBuyNum > 0 ? detailBuyNum
+                : localOrder != null && localOrder.getBuyNum() != null && localOrder.getBuyNum() > 0
+                ? localOrder.getBuyNum() : 1;
+        List<String> contents = deliveryStrategyResolver.resolveBatch(deliveryMode, ctx, buyNum);
+        if (contents.size() < buyNum) {
+            String failMsg;
+            if (deliveryMode == 1) {
+                failMsg = "未配置发货内容";
+            } else if (deliveryMode == 2) {
+                failMsg = contents.isEmpty()
+                        ? "卡密库存不足，无可用卡密"
+                        : "卡密库存不足，需要" + buyNum + "张，仅剩" + contents.size() + "张";
+            } else {
+                failMsg = "未知的发货模式: " + deliveryMode;
+            }
             log.warn("【账号{}】发货内容解析失败: {}", accountId, failMsg);
             return null;
         }
+        String content = String.join("\n", contents);
 
         List<String> imageUrls = new ArrayList<>();
         String imageUrlStr = deliveryConfig.getAutoDeliveryImageUrl();

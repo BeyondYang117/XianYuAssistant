@@ -83,4 +83,20 @@ public interface AutoDeliveryService {
      * 手动自定义发货（卖家手动输入内容发送）
      */
     ResultObject<String> manualDelivery(Long xianyuAccountId, String orderId, String content);
+
+    /**
+     * 手动提取发货内容（卡密），不经系统发送
+     *
+     * <p>用于风控掉线、WebSocket与虚拟发货API双双不可用时的人工兜底：按订单SKU匹配发货配置、
+     * 按购买数量提取卡密并套用自动发货同一套 {kmKey} 文案，把内容回显给卖家复制到闲鱼手工发送，
+     * 同时把发货流程的账务部分走完（扣库存、写卡密使用记录、订单置为已发货、按配置自动确认发货）。</p>
+     *
+     * <p>同一订单重复提取具备幂等性，会复用已分配的卡密，不重复扣减库存。</p>
+     *
+     * @param xianyuAccountId 闲鱼账号ID
+     * @param orderId         订单ID
+     * @return 提取到的发货内容
+     */
+    ResultObject<com.feijimiao.xianyuassistant.controller.dto.ManualExtractDeliveryRespDTO> manualExtractDelivery(
+            Long xianyuAccountId, String orderId);
 }

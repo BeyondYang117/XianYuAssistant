@@ -58,7 +58,8 @@ public interface XianyuGoodsOrderMapper {
         @Result(property = "paySuccessTime", column = "pay_success_time"),
         @Result(property = "consignTime", column = "consign_time"),
         @Result(property = "totalPrice", column = "total_price"),
-        @Result(property = "buyNum", column = "buy_num")
+        @Result(property = "buyNum", column = "buy_num"),
+        @Result(property = "deliveryWay", column = "delivery_way")
     })
     List<XianyuGoodsOrder> selectByAccountIdWithPage(
             @Param("accountId") Long accountId,
@@ -88,7 +89,10 @@ public interface XianyuGoodsOrderMapper {
 
     @Update("UPDATE xianyu_goods_order SET state = #{state}, content = #{content}, fail_reason = #{failReason} WHERE id = #{id}")
     int updateStateContentAndFailReason(@Param("id") Long id, @Param("state") Integer state, @Param("content") String content, @Param("failReason") String failReason);
-    
+
+    @Update("UPDATE xianyu_goods_order SET delivery_way = #{deliveryWay} WHERE id = #{id}")
+    int updateDeliveryWay(@Param("id") Long id, @Param("deliveryWay") Integer deliveryWay);
+
     @Select("SELECT * FROM xianyu_goods_order WHERE xianyu_account_id = #{accountId} AND xy_goods_id = #{xyGoodsId} AND order_id = #{orderId} LIMIT 1")
     XianyuGoodsOrder selectByOrderId(@Param("accountId") Long accountId, @Param("xyGoodsId") String xyGoodsId, @Param("orderId") String orderId);
 
@@ -157,7 +161,8 @@ public interface XianyuGoodsOrderMapper {
         @Result(property = "paySuccessTime", column = "pay_success_time"),
         @Result(property = "consignTime", column = "consign_time"),
         @Result(property = "totalPrice", column = "total_price"),
-        @Result(property = "buyNum", column = "buy_num")
+        @Result(property = "buyNum", column = "buy_num"),
+        @Result(property = "deliveryWay", column = "delivery_way")
     })
     List<XianyuGoodsOrder> selectByConditionWithPage(
             @Param("accountId") Long accountId,

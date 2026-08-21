@@ -337,6 +337,8 @@ public class TokenRefreshServiceImpl implements TokenRefreshService {
                 return false;
             }
             
+        } catch (com.feijimiao.xianyuassistant.exception.CaptchaRequiredException e) {
+            throw e;
         } catch (Exception e) {
             log.error("【账号{}】刷新WebSocket token失败", accountId, e);
             return false;

@@ -260,41 +260,68 @@ public class KamiConfigServiceImpl implements KamiConfigService {
 
     @Override
     public XianyuKamiItem acquireKami(Long kamiConfigId, String orderId) {
+        List<XianyuKamiItem> items = acquireKamiBatch(kamiConfigId, orderId, 1);
+        return items.isEmpty() ? null : items.get(0);
+    }
+
+    @Override
+    public List<XianyuKamiItem> acquireKamiBatch(Long kamiConfigId, String orderId, int count) {
+        if (count <= 0) {
+            return List.of();
+        }
         ReentrantLock configLock = configLocks.computeIfAbsent(kamiConfigId, k -> new ReentrantLock());
         configLock.lock();
         try {
             XianyuKamiConfig config = kamiConfigMapper.selectById(kamiConfigId);
             if (config == null) {
                 log.warn("卡密配置不存在: kamiConfigId={}", kamiConfigId);
-                return null;
-            }
-            XianyuKamiItem item = kamiItemMapper.findNextUnused(kamiConfigId);
-
-            if (item == null) {
-                log.warn("卡密配置[{}]无可用卡密，不触发发货流程", kamiConfigId);
-                sendStockOutEmailIfNeeded(config, kamiConfigId, orderId);
-                return null;
+                return List.of();
             }
 
-            int marked = kamiItemMapper.markUsed(item.getId(), orderId);
-            if (marked == 0) {
-                log.warn("卡密[{}]已被其他订单占用，并发冲突，尝试重新获取", item.getId());
-                item = kamiItemMapper.findNextUnused(kamiConfigId);
+            // API失败后的轮询重试、以及人工重复提取，复用同一订单已占用的卡密，避免重复扣减库存。
+            List<XianyuKamiItem> acquired = new ArrayList<>();
+            List<XianyuKamiItem> assigned = kamiItemMapper.findAllByConfigIdAndOrderId(kamiConfigId, orderId);
+            if (assigned != null && !assigned.isEmpty()) {
+                acquired.addAll(assigned.subList(0, Math.min(count, assigned.size())));
+                log.info("订单已分配卡密，复用原卡密: kamiConfigId={}, 复用{}张, 需要{}张, orderId={}",
+                        kamiConfigId, acquired.size(), count, orderId);
+            }
+
+            int newlyAcquired = 0;
+            while (acquired.size() < count) {
+                XianyuKamiItem item = kamiItemMapper.findNextUnused(kamiConfigId);
                 if (item == null) {
-                    log.warn("卡密配置[{}]并发冲突后无可用卡密", kamiConfigId);
+                    log.warn("卡密配置[{}]无可用卡密: 已获取{}张, 需要{}张", kamiConfigId, acquired.size(), count);
                     sendStockOutEmailIfNeeded(config, kamiConfigId, orderId);
-                    return null;
+                    break;
                 }
-                marked = kamiItemMapper.markUsed(item.getId(), orderId);
+
+                int marked = kamiItemMapper.markUsed(item.getId(), orderId);
                 if (marked == 0) {
-                    log.warn("卡密[{}]二次并发冲突，放弃本次获取", item.getId());
-                    return null;
+                    log.warn("卡密[{}]已被其他订单占用，并发冲突，尝试重新获取", item.getId());
+                    item = kamiItemMapper.findNextUnused(kamiConfigId);
+                    if (item == null) {
+                        log.warn("卡密配置[{}]并发冲突后无可用卡密", kamiConfigId);
+                        sendStockOutEmailIfNeeded(config, kamiConfigId, orderId);
+                        break;
+                    }
+                    marked = kamiItemMapper.markUsed(item.getId(), orderId);
+                    if (marked == 0) {
+                        log.warn("卡密[{}]二次并发冲突，放弃本次获取", item.getId());
+                        break;
+                    }
                 }
+
+                acquired.add(item);
+                newlyAcquired++;
             }
 
-            refreshConfigCounts(kamiConfigId);
-            checkAndSendAlert(config, kamiConfigId);
-            return item;
+            if (newlyAcquired > 0) {
+                log.info("卡密扣减成功: kamiConfigId={}, 新扣减{}张, orderId={}", kamiConfigId, newlyAcquired, orderId);
+                refreshConfigCounts(kamiConfigId);
+                checkAndSendAlert(config, kamiConfigId);
+            }
+            return acquired;
         } finally {
             configLock.unlock();
         }

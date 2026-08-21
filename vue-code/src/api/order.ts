@@ -27,6 +27,7 @@ export interface DeliveryRecordVO {
   consignTime?: string
   totalPrice?: string
   buyNum?: number
+  deliveryWay?: number
   createTime: string
 }
 
@@ -64,6 +65,29 @@ export function getOrderDetail(data: { xianyuAccountId: number; orderId: string;
 export function manualDelivery(data: { xianyuAccountId: number; orderId: string; content: string }) {
   return request<string>({
     url: '/autoDelivery/manual',
+    method: 'POST',
+    data
+  })
+}
+
+// 手动提取发货内容（卡密）结果
+export interface ManualExtractResult {
+  orderId: string
+  deliveryMode: number
+  buyNum: number
+  kamiCount: number
+  content: string
+  contents: string[]
+  imageUrls: string[]
+  confirmShipmentTriggered: boolean
+  reused: boolean
+  warning?: string
+}
+
+// 手动提取发货内容（卡密），不经系统发送，由卖家复制到闲鱼手工发送
+export function manualExtractDelivery(data: { xianyuAccountId: number; orderId: string }) {
+  return request<ManualExtractResult>({
+    url: '/autoDelivery/manualExtract',
     method: 'POST',
     data
   })

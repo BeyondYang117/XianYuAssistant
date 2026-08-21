@@ -3,6 +3,8 @@ package com.feijimiao.xianyuassistant.controller;
 import com.feijimiao.xianyuassistant.common.ResultObject;
 import com.feijimiao.xianyuassistant.controller.dto.TriggerAutoDeliveryReqDTO;
 import com.feijimiao.xianyuassistant.controller.dto.ManualDeliveryReqDTO;
+import com.feijimiao.xianyuassistant.controller.dto.ManualExtractDeliveryReqDTO;
+import com.feijimiao.xianyuassistant.controller.dto.ManualExtractDeliveryRespDTO;
 import com.feijimiao.xianyuassistant.service.AutoDeliveryService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +50,23 @@ public class AutoDeliveryController {
         } catch (Exception e) {
             log.error("自定义发货失败", e);
             return ResultObject.failed("自定义发货失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 手动提取发货内容（卡密），不经系统发送，由卖家复制到闲鱼手工发送
+     *
+     * @param reqDTO 手动提取请求DTO
+     * @return 提取到的发货内容
+     */
+    @PostMapping("/manualExtract")
+    public ResultObject<ManualExtractDeliveryRespDTO> manualExtractDelivery(@Valid @RequestBody ManualExtractDeliveryReqDTO reqDTO) {
+        try {
+            log.info("手动提取发货内容请求: xianyuAccountId={}, orderId={}", reqDTO.getXianyuAccountId(), reqDTO.getOrderId());
+            return autoDeliveryService.manualExtractDelivery(reqDTO.getXianyuAccountId(), reqDTO.getOrderId());
+        } catch (Exception e) {
+            log.error("手动提取发货内容失败", e);
+            return ResultObject.failed("手动提取发货内容失败: " + e.getMessage());
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.feijimiao.xianyuassistant.service.delivery;
 
+import java.util.List;
+
 /**
  * 发货内容解析策略接口
  *
@@ -23,10 +25,22 @@ public interface DeliveryContentStrategy {
     boolean supports(int deliveryMode);
 
     /**
-     * 解析发货内容
+     * 解析 count 份发货内容（订单买多份时一次性取齐，避免重复发同一张卡密）
+     *
+     * @param context 发货上下文（包含账号、商品、订单、配置等信息）
+     * @param count   需要的份数
+     * @return 发货内容列表；空列表表示无法发货，长度小于 count 表示库存不足，由调用方判定
+     */
+    List<String> resolveBatch(DeliveryContext context, int count);
+
+    /**
+     * 解析单份发货内容
      *
      * @param context 发货上下文（包含账号、商品、订单、配置等信息）
      * @return 发货内容文本，null表示无法发货（应中断发货流程）
      */
-    String resolve(DeliveryContext context);
+    default String resolve(DeliveryContext context) {
+        List<String> contents = resolveBatch(context, 1);
+        return (contents == null || contents.isEmpty()) ? null : contents.get(0);
+    }
 }

@@ -31,6 +31,18 @@ public interface KamiConfigService {
 
     XianyuKamiItem acquireKami(Long kamiConfigId, String orderId);
 
+    /**
+     * 批量获取卡密（同一订单买多份时使用）
+     *
+     * <p>同一订单重复调用具备幂等性：已分配给该订单的卡密会被复用，不会重复扣减库存。</p>
+     *
+     * @param kamiConfigId 卡密配置ID
+     * @param orderId      订单ID
+     * @param count        需要的张数
+     * @return 实际获取到的卡密列表，库存不足时长度可能小于 count，由调用方判定是否算失败
+     */
+    List<XianyuKamiItem> acquireKamiBatch(Long kamiConfigId, String orderId, int count);
+
     XianyuKamiConfig getConfig(Long kamiConfigId);
 
     ResultObject<List<KamiItemRespDTO>> exportKamiItems(KamiExportReqDTO reqDTO);

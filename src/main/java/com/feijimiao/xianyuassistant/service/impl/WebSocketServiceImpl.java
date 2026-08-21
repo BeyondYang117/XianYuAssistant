@@ -252,7 +252,7 @@ public class WebSocketServiceImpl implements WebSocketService {
             // 构建WebSocket请求头（参考Python的WEBSOCKET_HEADERS配置）
             Map<String, String> headers = new HashMap<>();
             headers.put("Cookie", cookieStr);
-            headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36");
+            headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
             headers.put("Origin", "https://www.goofish.com");
             headers.put("Host", "wss-goofish.dingtalk.com");
             headers.put("Accept-Encoding", "gzip, deflate, br, zstd");
@@ -304,6 +304,8 @@ public class WebSocketServiceImpl implements WebSocketService {
                         log.error("【账号{}】❌ Token失效后自动重连失败，将通过重连机制继续尝试", accountId);
                         // 参考Python: 失败后重连机制会继续尝试
                     }
+                } catch (com.feijimiao.xianyuassistant.exception.CaptchaRequiredException e) {
+                    log.warn("【账号{}】Token失效后触发滑块验证，停止自动重连，等待人工处理", accountId);
                 } catch (Exception e) {
                     log.error("【账号{}】Token失效自动重连异常", accountId, e);
                     // 参考Python: 异常后外层while True会继续重试
@@ -331,7 +333,7 @@ public class WebSocketServiceImpl implements WebSocketService {
             log.info("正在连接WebSocket: {}", WEBSOCKET_URL);
             log.info("请求头: {}", headers);
             
-            boolean connected = client.connectBlocking(10, TimeUnit.SECONDS);
+            boolean connected = client.connectBlocking(config.getConnectTimeout(), TimeUnit.SECONDS);
             
             if (connected) {
                 webSocketClients.put(accountId, client);
@@ -362,6 +364,10 @@ public class WebSocketServiceImpl implements WebSocketService {
                 log.error("WebSocket连接失败: accountId={}", accountId);
                 log.error("连接状态: isOpen={}, isClosed={}", 
                         client.isOpen(), client.isClosed());
+                // connectBlocking 超时/失败时也释放底层资源，并禁止把一次未建立的连接
+                // 当成异常断线再次触发回调。
+                client.setIntentionalClose(true);
+                client.close();
                 
                 // 记录操作日志
                 operationLogService.log(accountId, 
@@ -495,7 +501,8 @@ public class WebSocketServiceImpl implements WebSocketService {
                     // Python: if (current_time - self.last_heartbeat_response) > (self.heartbeat_interval + self.heartbeat_timeout):
                     Long lastResponseTime = lastHeartbeatResponseTimes.get(accountId);
                     if (lastResponseTime != null) {
-                        long timeout = config.getHeartbeatInterval() + config.getHeartbeatTimeout();
+                        // 至少容忍一次延迟/丢失的心跳响应，避免短暂网络抖动导致误重连。
+                        long timeout = config.getHeartbeatInterval() * 2L + config.getHeartbeatTimeout();
                         
                         if (now - lastResponseTime > timeout) {
                             log.warn("【账号{}】心跳响应超时（{}秒无响应，超时阈值{}秒），连接可能已断开",
@@ -515,8 +522,9 @@ public class WebSocketServiceImpl implements WebSocketService {
         log.info("心跳任务已启动: accountId={}, 心跳间隔{}秒, 超时阈值{}+{}秒", 
                 accountId, config.getHeartbeatInterval(), config.getHeartbeatInterval(), config.getHeartbeatTimeout());
         
-        // 启动Token自动刷新任务（参考Python的token_refresh_loop）
-        startTokenRefresh(accountId);
+        if (config.isConnectionTokenRefreshEnabled()) {
+            startTokenRefresh(accountId);
+        }
     }
     
     /**
@@ -614,6 +622,8 @@ public class WebSocketServiceImpl implements WebSocketService {
                         }
                     }
                 }
+            } catch (com.feijimiao.xianyuassistant.exception.CaptchaRequiredException e) {
+                throw e;
             } catch (Exception e) {
                 log.warn("【账号{}】刷新Token前Cookie检查/兜底刷新异常，继续尝试重连: {}", accountId, e.getMessage());
             }
@@ -646,6 +656,8 @@ public class WebSocketServiceImpl implements WebSocketService {
                     refreshTokenAndReconnect(accountId);
                 }, config.getTokenRetryInterval(), TimeUnit.SECONDS);
             }
+        } catch (com.feijimiao.xianyuassistant.exception.CaptchaRequiredException e) {
+            log.warn("【账号{}】Token刷新触发滑块验证，停止自动重试，等待人工处理", accountId);
         } catch (Exception e) {
             log.error("【账号{}】Token刷新并重连异常，将在{}秒后重试", 
                     accountId, config.getTokenRetryInterval(), e);
@@ -699,8 +711,12 @@ public class WebSocketServiceImpl implements WebSocketService {
         // 参考Python: 无限重连，但使用指数退避
         int currentAttempt = attemptCount.incrementAndGet();
         // 指数退避: 5s, 10s, 20s, 40s, 60s, 60s, ... 最大60秒
-        int actualDelay = isManualRestart ? delaySeconds : 
+        int backoffDelay = isManualRestart ? delaySeconds :
                 Math.min(delaySeconds * (int) Math.pow(2, Math.min(currentAttempt - 1, 4)), 60);
+        int jitter = isManualRestart || config.getReconnectJitter() <= 0
+                ? 0
+                : ThreadLocalRandom.current().nextInt(config.getReconnectJitter() + 1);
+        int actualDelay = Math.min(backoffDelay + jitter, 60);
         
         log.info("【账号{}】计划{}秒后执行重连（第{}次尝试）...", accountId, actualDelay, currentAttempt);
         
@@ -711,9 +727,10 @@ public class WebSocketServiceImpl implements WebSocketService {
                 // 停止当前连接和心跳
                 stopWebSocket(accountId);
                 
-                // 参考Python: 重连前先刷新Cookie（hasLogin保活）
+                // 普通网络重连优先复用数据库中的有效 Token。只有显式开启时才额外
+                // 调 hasLogin，防止短时断线把一次重连放大成多次认证接口调用。
                 try {
-                    if (cookieRefreshService != null) {
+                    if (config.isValidateCookieBeforeReconnect() && cookieRefreshService != null) {
                         log.info("【账号{}】重连前先检查Cookie登录状态...", accountId);
                         // 使用静默检查，不记录操作日志（避免频繁记录）
                         boolean cookieOk = cookieRefreshService.checkLoginStatusQuietly(accountId);
@@ -727,6 +744,9 @@ public class WebSocketServiceImpl implements WebSocketService {
                             }
                         }
                     }
+                } catch (com.feijimiao.xianyuassistant.exception.CaptchaRequiredException e) {
+                    log.warn("【账号{}】重连前检查触发滑块验证，停止自动重连，等待人工处理", accountId);
+                    return;
                 } catch (Exception e) {
                     log.warn("【账号{}】重连前Cookie检查/兜底刷新异常，继续尝试重连: {}", accountId, e.getMessage());
                 }
@@ -735,9 +755,12 @@ public class WebSocketServiceImpl implements WebSocketService {
                 boolean success = startWebSocket(accountId);
                 
                 if (success) {
-                    // 重连成功，重置计数
-                    attemptCount.set(0);
-                    log.info("【账号{}】✅ 重连成功", accountId);
+                    // 连接刚握手成功时不要立即清零失败次数；只有稳定保持一段时间，
+                    // 才把它视为真正恢复，避免反复快速断线一直使用最短重连间隔。
+                    XianyuWebSocketClient reconnectedClient = webSocketClients.get(accountId);
+                    scheduleStableReconnectReset(accountId, reconnectedClient, attemptCount);
+                    log.info("【账号{}】✅ 重连成功，连接稳定{}秒后重置重连计数",
+                            accountId, config.getStableConnectionDuration());
                     
                     operationLogService.log(accountId, 
                         OperationConstants.Type.RECONNECT, 
@@ -767,6 +790,8 @@ public class WebSocketServiceImpl implements WebSocketService {
                     // 参考Python: 重连失败后继续尝试（while True循环）
                     scheduleReconnect(accountId, config.getReconnectDelay(), false);
                 }
+            } catch (com.feijimiao.xianyuassistant.exception.CaptchaRequiredException e) {
+                log.warn("【账号{}】重连触发滑块验证，停止自动重试，等待人工处理", accountId);
             } catch (Exception e) {
                 log.error("【账号{}】重连异常，将继续尝试...", accountId, e);
                 scheduleReconnect(accountId, config.getReconnectDelay(), false);
@@ -774,6 +799,18 @@ public class WebSocketServiceImpl implements WebSocketService {
         }, actualDelay, TimeUnit.SECONDS);
         
         reconnectTasks.put(accountId, reconnectTask);
+    }
+
+    private void scheduleStableReconnectReset(Long accountId, XianyuWebSocketClient connectedClient,
+                                              AtomicInteger attemptCount) {
+        int stableSeconds = Math.max(1, config.getStableConnectionDuration());
+        reconnectExecutor.schedule(() -> {
+            XianyuWebSocketClient current = webSocketClients.get(accountId);
+            if (current == connectedClient && current != null && current.isConnected()) {
+                attemptCount.set(0);
+                log.debug("【账号{}】连接已稳定{}秒，重连计数已重置", accountId, stableSeconds);
+            }
+        }, stableSeconds, TimeUnit.SECONDS);
     }
     
     /**

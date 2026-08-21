@@ -8,6 +8,7 @@ import type { DeliveryRecordItem } from '../useOrderManager'
 import IconEmpty from '@/components/icons/IconEmpty.vue'
 import IconCopy from '@/components/icons/IconCopy.vue'
 import IconTruck from '@/components/icons/IconTruck.vue'
+import IconKey from '@/components/icons/IconKey.vue'
 import IconUser from '@/components/icons/IconUser.vue'
 import IconClock from '@/components/icons/IconClock.vue'
 import IconShoppingBag from '@/components/icons/IconShoppingBag.vue'
@@ -21,6 +22,7 @@ interface Props {
 interface Emits {
   (e: 'copySid', sid: string): void
   (e: 'confirmShipment', item: DeliveryRecordItem): void
+  (e: 'manualExtract', item: DeliveryRecordItem): void
   (e: 'viewDetail', item: DeliveryRecordItem): void
 }
 
@@ -148,6 +150,12 @@ const getConfirmColor = (state: number) => {
 const getConfirmBg = (state: number) => {
   return state === 1 ? 'rgba(48,209,88,.2)' : 'rgba(120,120,128,.12)'
 }
+
+// 人工提取卡密后手工发货的记录，与自动发货区分开
+const isManualDelivered = (order: DeliveryRecordItem) => order.deliveryWay === 1
+
+// 已发货的记录不再展示提取入口，避免误操作重复走发货流程
+const canExtract = (order: DeliveryRecordItem) => !!order.orderId && order.state !== 1
 </script>
 
 <template>
@@ -169,6 +177,7 @@ const getConfirmBg = (state: number) => {
           >
             {{ getDeliveryText(order.state) }}
           </span>
+          <span v-if="isManualDelivered(order)" class="order-card__status manual-tag">人工</span>
           <span v-if="order.state === -1 && order.failReason" class="order-card__fail-reason">{{ order.failReason }}</span>
           <span
             class="order-card__status"
@@ -218,6 +227,15 @@ const getConfirmBg = (state: number) => {
           <IconEye />
           <span>详情</span>
           <span class="detail-tooltip">单击查询本地，双击查询闲鱼服务器</span>
+        </button>
+        <button
+          v-if="canExtract(order)"
+          class="order-card__action order-card__action--extract"
+          :class="{ 'order-card__action--loading': order.extracting }"
+          @click="emit('manualExtract', order)"
+        >
+          <IconKey />
+          <span>{{ order.extracting ? '提取中' : '提取卡密' }}</span>
         </button>
         <button
           v-if="order.orderId"
@@ -282,6 +300,7 @@ const getConfirmBg = (state: number) => {
             >
               {{ getDeliveryText(order.state) }}
             </span>
+            <span v-if="isManualDelivered(order)" class="status-tag manual-tag">人工</span>
             <span v-if="order.state === -1 && order.failReason" class="fail-reason" :title="order.failReason">{{ order.failReason }}</span>
           </td>
           <td class="table__td table__td--center">
@@ -307,6 +326,15 @@ const getConfirmBg = (state: number) => {
               <IconEye />
               <span>详情</span>
               <span class="detail-tooltip">单击查询本地，双击查询闲鱼服务器</span>
+            </button>
+            <button
+              v-if="canExtract(order)"
+              class="table__action table__action--extract"
+              :class="{ 'table__action--loading': order.extracting }"
+              @click="emit('manualExtract', order)"
+            >
+              <IconKey />
+              <span>{{ order.extracting ? '提取中' : '提取卡密' }}</span>
             </button>
             <button
               v-if="order.orderId"
@@ -574,6 +602,7 @@ const getConfirmBg = (state: number) => {
 
 .order-card__footer {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 8px 12px;
   border-top: 0.5px solid var(--c-border-strong);
@@ -584,7 +613,8 @@ const getConfirmBg = (state: number) => {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  flex: 1;
+  flex: 1 1 calc(50% - 4px);
+  min-width: 0;
   height: 32px;
   font-size: 12px;
   font-weight: 500;
@@ -668,7 +698,7 @@ const getConfirmBg = (state: number) => {
 }
 
 .table__th--actions {
-  width: 100px;
+  width: 220px;
   text-align: center;
 }
 
@@ -701,6 +731,7 @@ const getConfirmBg = (state: number) => {
 
 .table__td--actions {
   text-align: center;
+  white-space: normal;
 }
 
 .order-id {
@@ -797,6 +828,16 @@ const getConfirmBg = (state: number) => {
   white-space: nowrap;
 }
 
+.manual-tag {
+  color: #ff9500;
+  background: rgba(255, 149, 0, 0.14);
+}
+
+/* 桌面端发货状态标签与「人工」标签同格显示，需要额外间距；移动端已由 status-group 的 gap 控制 */
+.table__td .manual-tag {
+  margin-left: 4px;
+}
+
 .order-card__sku {
   font-size: 11px;
   color: #ff9500;
@@ -825,6 +866,10 @@ const getConfirmBg = (state: number) => {
   height: 13px;
 }
 
+.table__td--actions .table__action {
+  margin: 2px 3px;
+}
+
 @media (hover: hover) {
   .table__action--ship:hover {
     background: rgba(52, 199, 89, 0.06);
@@ -834,6 +879,28 @@ const getConfirmBg = (state: number) => {
 .table__action--detail {
   border-color: rgba(0, 122, 255, 0.2);
   color: var(--c-accent);
+}
+
+.table__action--extract {
+  border-color: rgba(255, 149, 0, 0.28);
+  color: #ff9500;
+}
+
+@media (hover: hover) {
+  .table__action--extract:hover {
+    background: rgba(255, 149, 0, 0.08);
+  }
+}
+
+.order-card__action--extract {
+  color: #ff9500;
+  border-color: rgba(255, 149, 0, 0.28);
+}
+
+@media (hover: hover) {
+  .order-card__action--extract:hover {
+    background: rgba(255, 149, 0, 0.08);
+  }
 }
 
 @media (hover: hover) {

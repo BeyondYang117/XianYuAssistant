@@ -24,6 +24,27 @@ public class WebSocketConfig {
      * 参考Python: HEARTBEAT_TIMEOUT = 5
      */
     private int heartbeatTimeout = 5;
+
+    /** 建立连接的超时时间（秒） */
+    private int connectTimeout = 20;
+
+    /** 连接保持稳定后才重置重连计数（秒） */
+    private int stableConnectionDuration = 60;
+
+    /** 重连延迟随机抖动上限（秒） */
+    private int reconnectJitter = 3;
+
+    /**
+     * 异常重连前是否额外校验 Cookie。
+     * 正常重连直接复用缓存 Token，避免网络抖动放大为 hasLogin + Token 请求风暴。
+     */
+    private boolean validateCookieBeforeReconnect = false;
+
+    /**
+     * 是否由每条 WebSocket 连接主动定时刷新 Token。
+     * 默认关闭，统一交给 TokenRefreshService 按服务端有效期刷新。
+     */
+    private boolean connectionTokenRefreshEnabled = false;
     
     /**
      * Token刷新间隔（秒）
@@ -41,13 +62,13 @@ public class WebSocketConfig {
      * 凭证刷新最小间隔（分钟）
      * 用于Cookie保活和_m_h5_tk兜底刷新
      */
-    private int credentialRefreshMinMinutes = 15;
+    private int credentialRefreshMinMinutes = 45;
 
     /**
      * 凭证刷新最大间隔（分钟）
      * 用于Cookie保活和_m_h5_tk兜底刷新
      */
-    private int credentialRefreshMaxMinutes = 20;
+    private int credentialRefreshMaxMinutes = 60;
     
     /**
      * 消息过期时间（毫秒）

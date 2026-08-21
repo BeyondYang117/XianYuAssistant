@@ -65,7 +65,7 @@ public class WebSocketInitializer {
             headers.put("cache-header", "app-key token ua wv");
             headers.put("app-key", "444e9908a51d1cb236a27862abc769c9");
             headers.put("token", token);
-            headers.put("ua", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 DingTalk(2.1.5) OS(Windows/10) Browser(Chrome/133.0.0.0) DingWeb/2.1.5 IMPaaS DingWeb/2.1.5");
+            headers.put("ua", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 DingTalk(2.1.5) OS(Windows/10) Browser(Chrome/120.0.0.0) DingWeb/2.1.5 IMPaaS DingWeb/2.1.5");
             headers.put("dt", "j");
             headers.put("wv", "im:3,au:3,sy:6");
             headers.put("sync", "0,0;0;0;");

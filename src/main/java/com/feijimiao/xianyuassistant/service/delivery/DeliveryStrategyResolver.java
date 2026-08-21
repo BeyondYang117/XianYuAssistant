@@ -35,4 +35,23 @@ public class DeliveryStrategyResolver {
         log.warn("【账号{}】未知的发货模式: deliveryMode={}", context.getAccountId(), deliveryMode);
         return null;
     }
+
+    /**
+     * 根据发货模式解析 count 份发货内容（订单买多份时一次性取齐）
+     *
+     * @param deliveryMode 发货模式（1=文本，2=卡密）
+     * @param context      发货上下文
+     * @param count        需要的份数
+     * @return 发货内容列表；空列表表示无法发货，长度小于 count 表示库存不足
+     */
+    public List<String> resolveBatch(int deliveryMode, DeliveryContext context, int count) {
+        for (DeliveryContentStrategy strategy : strategies) {
+            if (strategy.supports(deliveryMode)) {
+                List<String> contents = strategy.resolveBatch(context, count);
+                return contents == null ? List.of() : contents;
+            }
+        }
+        log.warn("【账号{}】未知的发货模式: deliveryMode={}", context.getAccountId(), deliveryMode);
+        return List.of();
+    }
 }

@@ -248,6 +248,7 @@ CREATE TABLE IF NOT EXISTS xianyu_goods_order (
     consign_time VARCHAR(50),                        -- 发货时间
     total_price VARCHAR(20),                         -- 订单金额
     buy_num INTEGER,                                 -- 购买数量
+    delivery_way TINYINT DEFAULT 0,                  -- 发货方式: 0-自动发货, 1-人工提取卡密后手工发货
     FOREIGN KEY (xianyu_account_id) REFERENCES xianyu_account(id)
 );
 

@@ -42,13 +42,23 @@ websocket:
   heartbeat-interval: 15
   # 心跳超时（秒）
   heartbeat-timeout: 5
+  # 建立连接的超时时间（秒）
+  connect-timeout: 20
+  # 连接稳定多久后重置重连计数（秒）
+  stable-connection-duration: 60
+  # 重连延迟随机抖动上限（秒）
+  reconnect-jitter: 3
+  # 普通网络重连复用现有凭证，避免每次断线额外调用hasLogin
+  validate-cookie-before-reconnect: false
+  # Token由全局定时任务按有效期刷新，连接自身不再每小时强制刷新重连
+  connection-token-refresh-enabled: false
   # Token刷新间隔（秒，默认1小时）
   token-refresh-interval: 3600
   # Token重试间隔（秒，默认5分钟）
   token-retry-interval: 300
   # 凭证刷新间隔（分钟），用于Cookie保活和_m_h5_tk兜底刷新
-  credential-refresh-min-minutes: 15
-  credential-refresh-max-minutes: 20
+  credential-refresh-min-minutes: 45
+  credential-refresh-max-minutes: 60
   # 消息过期时间（毫秒，默认5分钟）
   message-expire-time: 300000
   # 人工接管超时（秒，默认1小时）

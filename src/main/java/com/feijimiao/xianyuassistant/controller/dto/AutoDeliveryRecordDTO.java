@@ -59,5 +59,10 @@ public class AutoDeliveryRecordDTO {
 
     private Integer buyNum;
 
+    /**
+     * 发货方式: 0-自动发货, 1-人工提取卡密后手工发货
+     */
+    private Integer deliveryWay;
+
     private String createTime;
 }
