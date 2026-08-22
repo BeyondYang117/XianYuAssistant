@@ -10,6 +10,7 @@ import IconClock from '@/components/icons/IconClock.vue'
 import IconCheck from '@/components/icons/IconCheck.vue'
 import IconAlert from '@/components/icons/IconAlert.vue'
 import IconSparkle from '@/components/icons/IconSparkle.vue'
+import IconPower from '@/components/icons/IconPower.vue'
 
 interface Props {
   accounts: Account[]
@@ -20,6 +21,7 @@ interface Emits {
   (e: 'edit', account: Account): void
   (e: 'delete', id: number): void
   (e: 'tasks', account: Account): void
+  (e: 'toggle-status', account: Account): void
 }
 
 defineProps<Props>()
@@ -114,6 +116,10 @@ const getStatusBg = (status: number) => {
           <IconSparkle />
           <span>任务</span>
         </button>
+        <button class="account-card__btn account-card__btn--edit" @click="emit('toggle-status', account)">
+          <IconPower />
+          <span>{{ account.status === 0 ? '启用' : '停用' }}</span>
+        </button>
         <button class="account-card__btn account-card__btn--delete" @click="emit('delete', account.id)">
           <IconTrash />
           <span>删除</span>
@@ -168,6 +174,10 @@ const getStatusBg = (status: number) => {
             <button class="table__action table__action--polish" @click="emit('tasks', account)">
               <IconSparkle />
               <span>任务</span>
+            </button>
+            <button class="table__action table__action--edit" @click="emit('toggle-status', account)">
+              <IconPower />
+              <span>{{ account.status === 0 ? '启用' : '停用' }}</span>
             </button>
             <button class="table__action table__action--delete" @click="emit('delete', account.id)">
               <IconTrash />

@@ -1,5 +1,5 @@
 import { ref, reactive } from 'vue'
-import { getAccountList, deleteAccount as deleteAccountApi } from '@/api/account'
+import { getAccountList, deleteAccount as deleteAccountApi, toggleAccountStatus } from '@/api/account'
 import { showSuccess, showError } from '@/utils'
 import type { Account } from '@/types'
 
@@ -68,6 +68,18 @@ export function useAccountManager() {
     dialogs.deleteConfirm = true;
   };
 
+  const toggleStatus = async (account: Account) => {
+    try {
+      const response = await toggleAccountStatus({ id: account.id })
+      if (response.code === 0 || response.code === 200) {
+        showSuccess(response.data?.message || (account.status === 0 ? '账号已启用' : '账号已停用'))
+        await loadAccounts()
+      } else throw new Error(response.msg || '操作失败')
+    } catch (error: any) {
+      showError('账号状态更新失败: ' + error.message)
+    }
+  }
+
   // 打开自动任务配置（擦亮 / 好评）
   const configTasks = (account: Account) => {
     currentAccount.value = account;
@@ -107,6 +119,7 @@ export function useAccountManager() {
     showQRLoginDialog,
     editAccount,
     deleteAccount,
+    toggleStatus,
     configTasks,
     confirmDelete
   }

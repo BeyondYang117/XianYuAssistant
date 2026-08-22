@@ -49,6 +49,7 @@ export function getGoodsStatusText(status: number): { text: string; type: string
 }
 
 export function getAccountStatusText(status: number): { text: string; type: string } {
+  if (status === 0) return { text: '已停用', type: 'danger' }
   const statusMap: Record<number, { text: string; type: string }> = {
     1: { text: '正常', type: 'success' },
     '-1': { text: '需要验证', type: 'warning' }

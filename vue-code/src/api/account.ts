@@ -39,6 +39,10 @@ export function deleteAccount(data: { id: number }) {
   })
 }
 
+export function toggleAccountStatus(data: { id: number }) {
+  return request({ url: '/account/toggleStatus', method: 'POST', data: { accountId: data.id } })
+}
+
 // 手动添加账号
 export function manualAddAccount(data: { accountNote: string; cookie: string }) {
   return request({
@@ -47,5 +51,4 @@ export function manualAddAccount(data: { accountNote: string; cookie: string }) 
     data
   })
 }
-
 

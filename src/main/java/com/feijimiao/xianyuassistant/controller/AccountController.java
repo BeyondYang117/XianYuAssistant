@@ -203,6 +203,26 @@ public class AccountController {
         }
     }
 
+    @PostMapping("/toggleStatus")
+    public ResultObject<UpdateAccountRespDTO> toggleStatus(@RequestBody DeleteAccountReqDTO reqDTO) {
+        try {
+            Long id = reqDTO.getAccountId();
+            if (id == null) return ResultObject.failed("账号ID不能为空");
+            XianyuAccount account = accountMapper.selectById(id);
+            if (account == null) return ResultObject.failed("账号不存在");
+            boolean disabled = Integer.valueOf(0).equals(account.getStatus());
+            account.setStatus(disabled ? 1 : 0);
+            account.setUpdatedTime(java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            accountMapper.updateById(account);
+            UpdateAccountRespDTO resp = new UpdateAccountRespDTO();
+            resp.setMessage(disabled ? "账号已启用" : "账号已停用");
+            return ResultObject.success(resp);
+        } catch (Exception e) {
+            log.error("切换账号状态失败", e);
+            return ResultObject.failed("切换账号状态失败: " + e.getMessage());
+        }
+    }
+
     /**
      * 获取账号详情
      */

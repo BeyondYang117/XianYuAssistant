@@ -23,6 +23,7 @@ const {
   showQRLoginDialog,
   editAccount,
   deleteAccount,
+  toggleStatus,
   configTasks
 } = useAccountManager();
 
@@ -65,6 +66,7 @@ loadAccounts();
           :loading="loading"
           @edit="editAccount"
           @delete="deleteAccount"
+          @toggle-status="toggleStatus"
           @tasks="configTasks"
         />
       </div>
